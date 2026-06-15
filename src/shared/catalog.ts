@@ -1,0 +1,195 @@
+import type { ComponentDefinition, PinDefinition } from "./types.js";
+
+const pin = (
+  id: string,
+  label: string,
+  side: PinDefinition["side"],
+  offset: number,
+  kind: PinDefinition["kind"],
+  direction: PinDefinition["direction"],
+): PinDefinition => ({
+  id,
+  label,
+  side,
+  offset,
+  kind,
+  direction,
+});
+
+export const componentCatalog: ComponentDefinition[] = [
+  {
+    type: "arduino-uno",
+    name: "Arduino Uno",
+    category: "Controllers",
+    size: { width: 280, height: 360 },
+    accent: "#2563eb",
+    visualStyle: "arduino-uno",
+    pins: [
+      ...Array.from({ length: 14 }, (_, index) =>
+        pin(`d${index}`, `D${index}`, "left", 44 + index * 18, "digital", "output"),
+      ),
+      ...Array.from({ length: 6 }, (_, index) =>
+        pin(`a${index}`, `A${index}`, "right", 74 + index * 30, "analog", "bidirectional"),
+      ),
+      pin("5v", "5V", "top", 62, "power", "power"),
+      pin("vin", "VIN", "top", 134, "power", "power"),
+      pin("gnd-a", "GND", "bottom", 86, "ground", "ground"),
+      pin("gnd-b", "GND", "bottom", 180, "ground", "ground"),
+    ],
+  },
+  {
+    type: "arduino-nano",
+    name: "Arduino Nano",
+    category: "Controllers",
+    size: { width: 170, height: 320 },
+    accent: "#059669",
+    visualStyle: "arduino-nano",
+    pins: [
+      ...Array.from({ length: 8 }, (_, index) =>
+        pin(`d${index + 2}`, `D${index + 2}`, "left", 38 + index * 30, "digital", "output"),
+      ),
+      ...Array.from({ length: 6 }, (_, index) =>
+        pin(`a${index}`, `A${index}`, "right", 38 + index * 30, "analog", "bidirectional"),
+      ),
+      pin("5v", "5V", "top", 46, "power", "power"),
+      pin("gnd", "GND", "bottom", 78, "ground", "ground"),
+      pin("vin", "VIN", "bottom", 122, "power", "power"),
+    ],
+  },
+  {
+    type: "breadboard",
+    name: "Breadboard",
+    category: "Prototyping",
+    size: { width: 320, height: 180 },
+    accent: "#eab308",
+    visualStyle: "breadboard",
+    pins: [
+      pin("rail-pos", "+ Rail", "top", 68, "power", "power"),
+      pin("rail-neg", "- Rail", "top", 232, "ground", "ground"),
+      pin("row-a", "Row A", "left", 58, "passive", "passive"),
+      pin("row-b", "Row B", "left", 114, "passive", "passive"),
+      pin("row-c", "Row C", "right", 58, "passive", "passive"),
+      pin("row-d", "Row D", "right", 114, "passive", "passive"),
+    ],
+  },
+  {
+    type: "led",
+    name: "LED",
+    category: "Outputs",
+    size: { width: 140, height: 132 },
+    accent: "#f43f5e",
+    visualStyle: "led",
+    pins: [
+      pin("anode", "Anode", "left", 66, "signal", "input"),
+      pin("cathode", "Cathode", "right", 66, "ground", "ground"),
+    ],
+  },
+  {
+    type: "resistor",
+    name: "Resistor",
+    category: "Passive",
+    size: { width: 190, height: 76 },
+    accent: "#a16207",
+    visualStyle: "resistor",
+    pins: [
+      pin("left", "Left", "left", 38, "passive", "passive"),
+      pin("right", "Right", "right", 38, "passive", "passive"),
+    ],
+  },
+  {
+    type: "push-button",
+    name: "Push Button",
+    category: "Inputs",
+    size: { width: 140, height: 120 },
+    accent: "#6366f1",
+    visualStyle: "button",
+    pins: [
+      pin("a", "Pin A", "left", 60, "signal", "input"),
+      pin("b", "Pin B", "right", 60, "signal", "input"),
+    ],
+  },
+  {
+    type: "potentiometer",
+    name: "Potentiometer",
+    category: "Inputs",
+    size: { width: 170, height: 130 },
+    accent: "#7c3aed",
+    visualStyle: "potentiometer",
+    pins: [
+      pin("left", "Left", "bottom", 34, "power", "power"),
+      pin("signal", "Signal", "bottom", 84, "analog", "output"),
+      pin("right", "Right", "bottom", 134, "ground", "ground"),
+    ],
+  },
+  {
+    type: "buzzer",
+    name: "Buzzer",
+    category: "Outputs",
+    size: { width: 132, height: 132 },
+    accent: "#111827",
+    visualStyle: "buzzer",
+    pins: [
+      pin("positive", "+", "left", 66, "power", "input"),
+      pin("negative", "-", "right", 66, "ground", "ground"),
+    ],
+  },
+  {
+    type: "servo-motor",
+    name: "Servo Motor",
+    category: "Actuators",
+    size: { width: 180, height: 128 },
+    accent: "#0f766e",
+    visualStyle: "servo",
+    pins: [
+      pin("signal", "Signal", "bottom", 42, "signal", "input"),
+      pin("vcc", "VCC", "bottom", 90, "power", "power"),
+      pin("gnd", "GND", "bottom", 138, "ground", "ground"),
+    ],
+  },
+  {
+    type: "ultrasonic-sensor",
+    name: "Ultrasonic Sensor",
+    category: "Sensors",
+    size: { width: 220, height: 144 },
+    accent: "#1d4ed8",
+    visualStyle: "sensor",
+    pins: [
+      pin("vcc", "VCC", "bottom", 38, "power", "power"),
+      pin("trig", "TRIG", "bottom", 86, "signal", "input"),
+      pin("echo", "ECHO", "bottom", 134, "signal", "output"),
+      pin("gnd", "GND", "bottom", 182, "ground", "ground"),
+    ],
+  },
+  {
+    type: "jumper-wire",
+    name: "Jumper Wire",
+    category: "Wiring",
+    size: { width: 160, height: 58 },
+    accent: "#16a34a",
+    visualStyle: "wire",
+    pins: [
+      pin("end-a", "End A", "left", 29, "signal", "bidirectional"),
+      pin("end-b", "End B", "right", 29, "signal", "bidirectional"),
+    ],
+  },
+  {
+    type: "power-5v",
+    name: "5V Power",
+    category: "Power",
+    size: { width: 138, height: 74 },
+    accent: "#ef4444",
+    visualStyle: "power",
+    pins: [pin("out", "5V", "right", 37, "power", "power")],
+  },
+  {
+    type: "ground",
+    name: "GND",
+    category: "Power",
+    size: { width: 138, height: 74 },
+    accent: "#334155",
+    visualStyle: "ground",
+    pins: [pin("out", "GND", "right", 37, "ground", "ground")],
+  },
+];
+
+export const catalogByType = Object.fromEntries(componentCatalog.map((definition) => [definition.type, definition]));

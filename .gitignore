@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-electron/
+release/
+build/
+out/
+.env
+.env.*
+tmp/
+temp/
+.cache/
+Thumbs.db
+.DS_Store
+Desktop.ini
+*.tsbuildinfo
