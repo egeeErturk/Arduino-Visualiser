@@ -123,3 +123,42 @@ npm run electron:build
 ### Environment Limitation
 
 - The Windows Computer Use runtime failed to bootstrap in this session, so full native desktop click-through automation was not trustworthy. Renderer QA was completed through the in-app browser and desktop build/process verification was completed through shell checks.
+
+## 2026-06-16 Arduino Sketch Generator
+
+### What Was Added
+
+- Added a reusable shared Arduino sketch generation layer in `src/shared/arduinoSketch.ts`.
+- Added a new `Generate Code` action in the renderer toolbar.
+- Added a dedicated generated-code modal with:
+  - starter code output
+  - copy-to-clipboard
+  - save as `.ino`
+- Added desktop IPC support for native `.ino` save dialogs.
+- Added a reusable verification script for required generation scenarios.
+
+### Supported Detection
+
+- Arduino Uno / Nano
+- LED
+- Push Button
+- Servo Motor
+- Potentiometer
+- Buzzer
+- Ultrasonic Sensor
+
+### Verification Result
+
+- `lint` passed
+- `typecheck` passed
+- `build` passed
+- `verify:sketch` passed for:
+  - LED circuit
+  - Button + LED
+  - Servo
+  - Ultrasonic sensor
+
+### Notes
+
+- Generated code is intentionally a starter template and not a claim of complete automatic firmware synthesis.
+- The generator follows circuit graph connections through simple passive pass-through parts like resistor, breadboard, and jumper wire so Arduino-linked devices can still be recognized in common beginner layouts.

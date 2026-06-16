@@ -1,6 +1,8 @@
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
+  Clipboard,
+  CodeXml,
   Download,
   FileInput,
   FolderOpen,
@@ -8,17 +10,20 @@ import {
   Import,
   Info,
   Library,
+  Moon,
   RotateCcw,
   RotateCw,
   Save,
   SaveAll,
   Settings,
+  Sun,
   Trash2,
   Usb,
 } from "lucide-react";
+import { generateArduinoSketch } from "../shared/arduinoSketch";
 import { catalogByType } from "../shared/catalog";
 import { createEmptyProject, parseProjectJson, serializeProject } from "../shared/project";
-import { confirmDiscard, downloadJson, getAutosave, readJsonFileFromBrowser, setAutosave } from "./lib/desktop";
+import { confirmDiscard, downloadJson, downloadTextFile, getAutosave, readJsonFileFromBrowser, setAutosave } from "./lib/desktop";
 import CircuitCanvas from "./components/CircuitCanvas";
 import { useCircuitStore, componentLibrary, markProjectSaved, replaceLoadedProject, restoreInitialProject } from "./store/useCircuitStore";
 import "./styles.css";
@@ -54,6 +59,13 @@ export default function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [feedback, setFeedback] = useState("Ready.");
+  const [codeModalOpen, setCodeModalOpen] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+    return window.localStorage.getItem("arduino-theme") === "dark" ? "dark" : "light";
+  });
 
   const selectedComponent = selection?.type === "component"
     ? project.components.find((component) => component.id === selection.id) ?? null
@@ -63,6 +75,7 @@ export default function App() {
     : null;
 
   const warningLookup = warnings.find((warning) => warning.id === highlightedWarningId) ?? null;
+  const generatedSketch = useMemo(() => generateArduinoSketch(project), [project]);
 
   const componentConnections = useMemo(() => {
     if (!selectedComponent) {
@@ -98,6 +111,11 @@ export default function App() {
     };
     void autosave();
   }, [project]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("arduino-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     if (window.desktop?.setDirtyState) {
@@ -295,6 +313,33 @@ export default function App() {
     }
   }
 
+  async function handleCopyGeneratedCode() {
+    try {
+      await navigator.clipboard.writeText(generatedSketch.code);
+      setFeedback("Copied starter Arduino sketch to clipboard.");
+    } catch {
+      setFeedback("Could not copy code automatically. Please copy it manually from the modal.");
+    }
+  }
+
+  async function handleSaveGeneratedCode() {
+    const defaultName = generatedSketch.fileName.replace(/\.ino$/i, "");
+
+    if (window.desktop) {
+      const result = await window.desktop.exportSketch({
+        defaultName,
+        sketchCode: generatedSketch.code,
+      });
+      if (!result.canceled) {
+        setFeedback("Saved Arduino sketch as .ino.");
+      }
+      return;
+    }
+
+    downloadTextFile(defaultName, generatedSketch.code, "ino", "text/plain");
+    setFeedback("Downloaded Arduino sketch as .ino.");
+  }
+
   return (
     <div className="app-frame">
       <header className="topbar">
@@ -302,7 +347,7 @@ export default function App() {
           <div className="brand-mark"><Usb size={18} /></div>
           <div>
             <h1>Arduino Circuit Visualizer</h1>
-            <p>{dirty ? "Unsaved changes" : "All changes saved"}{filePath ? ` • ${filePath.split(/[\\/]/).pop()}` : ""}</p>
+            <p>{dirty ? "Unsaved changes" : "All changes saved"}{filePath ? ` | ${filePath.split(/[\\/]/).pop()}` : ""}</p>
           </div>
         </div>
         <div className="toolbar">
@@ -312,11 +357,18 @@ export default function App() {
           <ToolbarButton icon={<SaveAll size={16} />} label="Save As" onClick={() => void handleSaveAs()} title="Save As (Ctrl/Cmd+Shift+S)" />
           <ToolbarButton icon={<Download size={16} />} label="Export" onClick={() => void handleExport()} title="Export JSON (Ctrl/Cmd+E)" />
           <ToolbarButton icon={<Import size={16} />} label="Import" onClick={() => setImportModalOpen(true)} title="Import JSON" />
+          <ToolbarButton icon={<CodeXml size={16} />} label="Generate Code" onClick={() => setCodeModalOpen(true)} title="Generate Arduino starter code" />
           <ToolbarButton icon={<RotateCcw size={16} />} label="Undo" onClick={undo} disabled={historyPast.length === 0} title="Undo (Ctrl/Cmd+Z)" />
           <ToolbarButton icon={<RotateCw size={16} />} label="Redo" onClick={redo} disabled={historyFuture.length === 0} title="Redo (Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y)" />
           <ToolbarButton icon={<Library size={16} />} label="Library" onClick={() => setLeftPanelOpen((value) => !value)} title="Toggle component library" />
           <ToolbarButton icon={<Info size={16} />} label="Inspector" onClick={() => setRightPanelOpen((value) => !value)} title="Toggle inspector" />
           <ToolbarButton icon={<AlertTriangle size={16} />} label="Warnings" onClick={() => setRightPanelOpen(true)} title="Focus warnings" />
+          <ToolbarButton
+            icon={theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+            label={theme === "light" ? "Dark" : "Light"}
+            onClick={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
+            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          />
           <ToolbarButton icon={<Settings size={16} />} label="Settings" onClick={() => setFeedback("Settings panel placeholder: desktop preferences can be added here.")} title="Settings" />
         </div>
       </header>
@@ -350,9 +402,9 @@ export default function App() {
                         })}
                     >
                       <span className="swatch" style={{ background: item.accent }} />
-                      <span>
+                      <span className="library-card-copy">
                         <strong>{item.name}</strong>
-                        <small>{item.pins.length} pins</small>
+                        <small>{item.category} | {item.pins.length} pins</small>
                       </span>
                     </button>
                   ))}
@@ -416,6 +468,13 @@ export default function App() {
             {selectedComponent && (
               <div className="inspector-stack">
                 <div className="inspector-card">
+                  <div className="inspector-card-header">
+                    <div>
+                      <h3>{selectedComponent.name}</h3>
+                      <p>{catalogByType[selectedComponent.type]?.name ?? selectedComponent.type}</p>
+                    </div>
+                    <span className="inspector-chip">{selectedComponent.category}</span>
+                  </div>
                   <label>
                     <span>Name</span>
                     <input value={selectedComponent.name} onChange={(event) => renameComponent(selectedComponent.id, event.target.value)} />
@@ -437,11 +496,11 @@ export default function App() {
                   <div className="pin-table">
                     {componentConnections.map(({ pin, related }) => (
                       <div key={pin.id} className="pin-row">
-                        <div>
+                        <div className="pin-row-meta">
                           <strong>{pin.label}</strong>
-                          <small>{pin.kind} • {pin.direction}</small>
+                          <small>{pin.kind} | {pin.direction}</small>
                         </div>
-                        <div>
+                        <div className="pin-row-links">
                           {related.length === 0 && <span className="status-pill">Not connected</span>}
                           {related.map(({ connection, otherComponent, otherPin }) => (
                             <span key={connection.id} className="connection-action">
@@ -481,10 +540,10 @@ export default function App() {
                 <div className="inspector-card">
                   <h3>Connection</h3>
                   <dl className="detail-grid">
-                    <div><dt>Source</dt><dd>{sourceComponent?.name} • {sourcePin?.label}</dd></div>
-                    <div><dt>Source kind</dt><dd>{sourcePin?.kind} • {sourcePin?.direction}</dd></div>
-                    <div><dt>Target</dt><dd>{targetComponent?.name} • {targetPin?.label}</dd></div>
-                    <div><dt>Target kind</dt><dd>{targetPin?.kind} • {targetPin?.direction}</dd></div>
+                    <div><dt>Source</dt><dd>{sourceComponent?.name} | {sourcePin?.label}</dd></div>
+                    <div><dt>Source kind</dt><dd>{sourcePin?.kind} | {sourcePin?.direction}</dd></div>
+                    <div><dt>Target</dt><dd>{targetComponent?.name} | {targetPin?.label}</dd></div>
+                    <div><dt>Target kind</dt><dd>{targetPin?.kind} | {targetPin?.direction}</dd></div>
                   </dl>
                   <label>
                     <span>Wire color</span>
@@ -499,7 +558,10 @@ export default function App() {
 
             {selection?.type === "warning" && warningLookup && (
               <div className="inspector-card">
-                <h3>{warningLookup.title}</h3>
+                <div className={`warning-summary severity-${warningLookup.severity}`}>
+                  <AlertTriangle size={16} />
+                  <strong>{warningLookup.title}</strong>
+                </div>
                 <p>{warningLookup.description}</p>
                 <small>Affected components: {warningLookup.componentIds.length || "none"}</small>
               </div>
@@ -531,6 +593,37 @@ export default function App() {
             <div className="modal-actions">
               <button type="button" onClick={() => void handleImportFromFile()}><Import size={14} /> Import File</button>
               <button type="button" className="primary-button" onClick={handleImportFromText}><Hammer size={14} /> Apply JSON</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {codeModalOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal-card code-modal-card" role="dialog" aria-modal="true" aria-labelledby="codegen-title">
+            <div className="modal-header">
+              <div>
+                <h2 id="codegen-title">Generated Arduino Code</h2>
+                <p className="modal-copy">Generated code is a starter template and may require manual refinement.</p>
+              </div>
+              <button type="button" onClick={() => setCodeModalOpen(false)}>Close</button>
+            </div>
+
+            <div className="codegen-summary">
+              <span className="inspector-chip">{generatedSketch.analysis.board?.name ?? "No Arduino detected"}</span>
+              <span className="status-pill">LEDs: {generatedSketch.analysis.ledBindings.length}</span>
+              <span className="status-pill">Buttons: {generatedSketch.analysis.buttonBindings.length}</span>
+              <span className="status-pill">Servos: {generatedSketch.analysis.servoBindings.length}</span>
+              <span className="status-pill">Pots: {generatedSketch.analysis.potentiometerBindings.length}</span>
+              <span className="status-pill">Buzzers: {generatedSketch.analysis.buzzerBindings.length}</span>
+              <span className="status-pill">Ultrasonic: {generatedSketch.analysis.ultrasonicBindings.length}</span>
+            </div>
+
+            <pre className="code-output"><code>{generatedSketch.code}</code></pre>
+
+            <div className="modal-actions">
+              <button type="button" onClick={() => void handleCopyGeneratedCode()}><Clipboard size={14} /> Copy</button>
+              <button type="button" className="primary-button" onClick={() => void handleSaveGeneratedCode()}><Save size={14} /> Save .ino</button>
             </div>
           </div>
         </div>

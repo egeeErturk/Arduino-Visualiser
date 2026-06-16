@@ -148,6 +148,20 @@ ipcMain.handle("dialog:export-circuit", async (_event, payload: { defaultName: s
   return { canceled: false, filePath: result.filePath };
 });
 
+ipcMain.handle("dialog:export-sketch", async (_event, payload: { defaultName: string; sketchCode: string }) => {
+  const window = BrowserWindow.getFocusedWindow() || mainWindow;
+  const result = await dialog.showSaveDialog(window!, {
+    title: "Save Arduino Sketch",
+    defaultPath: `${payload.defaultName}.ino`,
+    filters: [{ name: "Arduino Sketch", extensions: ["ino"] }],
+  });
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+  await fs.writeFile(result.filePath, payload.sketchCode, "utf8");
+  return { canceled: false, filePath: result.filePath };
+});
+
 ipcMain.handle("storage:get-autosave", async () => autosaveStore.get("autosave"));
 ipcMain.handle("storage:set-autosave", async (_event, payload: { projectJson: string }) => {
   autosaveStore.set("autosave", payload.projectJson);

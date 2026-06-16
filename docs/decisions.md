@@ -30,3 +30,21 @@ This approach is cleaner than hardcoding machine-specific tool paths into `packa
 ## Validation Is Heuristic, Not Simulation
 
 The product goal is planning and documentation, not physical simulation. Validation rules therefore focus on educational heuristics like direct power shorts, floating inputs, resistor visibility, and suspicious fanout rather than claiming exact electrical correctness.
+
+## Arduino Sketch Generation Architecture
+
+The Arduino sketch generator lives in `src/shared/arduinoSketch.ts` instead of inside the React UI. This keeps circuit analysis and code generation reusable, testable, and easier to extend when new components are added.
+
+The renderer only:
+
+- triggers generation
+- displays generated code
+- offers copy/export actions
+
+The generator itself:
+
+- analyzes the current circuit graph
+- traces Arduino-connected components through simple passive pass-through parts
+- emits starter `setup()` and `loop()` code templates
+
+This separation keeps UI concerns out of code generation logic and avoids coupling starter firmware generation to Electron-specific file operations.

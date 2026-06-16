@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("desktop", {
     ipcRenderer.invoke("dialog:save-circuit-as", payload),
   exportCircuit: (payload: { defaultName: string; projectJson: string }) =>
     ipcRenderer.invoke("dialog:export-circuit", payload),
+  exportSketch: (payload: { defaultName: string; sketchCode: string }) =>
+    ipcRenderer.invoke("dialog:export-sketch", payload),
   importCircuit: () => ipcRenderer.invoke("dialog:import-circuit"),
   getAutosave: () => ipcRenderer.invoke("storage:get-autosave"),
   setAutosave: (projectJson: string) => ipcRenderer.invoke("storage:set-autosave", { projectJson }),

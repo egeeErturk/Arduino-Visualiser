@@ -1,7 +1,10 @@
-import { useEffect, useMemo, type DragEventHandler } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEventHandler } from "react";
 import ReactFlow, {
   Background,
+  Connection,
+  ConnectionMode,
   Controls,
+  ConnectionLineType,
   MarkerType,
   Panel,
   ReactFlowProvider,
@@ -20,6 +23,14 @@ import { useCircuitStore } from "../store/useCircuitStore";
 
 const nodeTypes = { circuitNode: CircuitNode };
 const edgeTypes = { circuitEdge: CircuitEdge };
+const handlePrefix = "pin:";
+
+function parsePinId(handleId: string | null | undefined) {
+  if (!handleId?.startsWith(handlePrefix)) {
+    return null;
+  }
+  return handleId.slice(handlePrefix.length);
+}
 
 function CanvasInner() {
   const reactFlow = useReactFlow();
@@ -29,12 +40,35 @@ function CanvasInner() {
   const pendingPin = useCircuitStore((state) => state.pendingPin);
   const highlightedWarningId = useCircuitStore((state) => state.highlightedWarningId);
   const setSelection = useCircuitStore((state) => state.setSelection);
+  const queuePin = useCircuitStore((state) => state.queuePin);
   const updatePosition = useCircuitStore((state) => state.updateComponentPosition);
   const beginMoveSnapshot = useCircuitStore((state) => state.beginMoveSnapshot);
   const finalizeMoveSnapshot = useCircuitStore((state) => state.finalizeMoveSnapshot);
   const setViewport = useCircuitStore((state) => state.setViewport);
+  const [activeDragSource, setActiveDragSource] = useState<{ componentId: string; pinId: string } | null>(null);
 
   const highlightedWarning = warnings.find((warning) => warning.id === highlightedWarningId);
+
+  const canConnectPin = useCallback((componentId: string, pinId: string) => {
+    if (!activeDragSource) {
+      return false;
+    }
+
+    if (activeDragSource.componentId === componentId && activeDragSource.pinId === pinId) {
+      return false;
+    }
+
+    return !project.connections.some((connection) =>
+      (connection.fromComponentId === activeDragSource.componentId &&
+        connection.fromPinId === activeDragSource.pinId &&
+        connection.toComponentId === componentId &&
+        connection.toPinId === pinId) ||
+      (connection.toComponentId === activeDragSource.componentId &&
+        connection.toPinId === activeDragSource.pinId &&
+        connection.fromComponentId === componentId &&
+        connection.fromPinId === pinId),
+    );
+  }, [activeDragSource, project.connections]);
 
   useEffect(() => {
     reactFlow.setViewport(project.viewport);
@@ -53,9 +87,11 @@ function CanvasInner() {
         isPending: (pinId: string) => pendingPin?.componentId === component.id && pendingPin.pinId === pinId,
         isHighlighted: selection?.type === "component" && selection.id === component.id,
         isWarningTarget: highlightedWarning?.componentIds.includes(component.id) ?? false,
+        activeDragSource,
+        canConnectPin,
       },
     }));
-  }, [highlightedWarning?.componentIds, pendingPin, project.components, project.connections, selection]);
+  }, [activeDragSource, canConnectPin, highlightedWarning?.componentIds, pendingPin, project.components, project.connections, selection]);
 
   const edges = useMemo<Edge[]>(() => {
     return project.connections.map((connection) => {
@@ -72,6 +108,7 @@ function CanvasInner() {
         targetHandle: getHandleId(connection.toPinId),
         selected: selection?.type === "connection" && selection.id === connection.id,
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: connection.color },
+        animated: selection?.type === "connection" && selection.id === connection.id,
         data: {
           color: connection.color,
           label: sourceComponent && sourcePin && targetComponent && targetPin
@@ -105,6 +142,19 @@ function CanvasInner() {
     instance.setViewport(project.viewport);
   };
 
+  const onConnect = (connection: Connection) => {
+    const sourcePinId = parsePinId(connection.sourceHandle);
+    const targetPinId = parsePinId(connection.targetHandle);
+
+    if (!connection.source || !connection.target || !sourcePinId || !targetPinId) {
+      return;
+    }
+
+    queuePin(connection.source, sourcePinId);
+    queuePin(connection.target, targetPinId);
+    setActiveDragSource(null);
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -115,6 +165,9 @@ function CanvasInner() {
       fitView={false}
       minZoom={0.45}
       maxZoom={1.8}
+      connectionLineType={ConnectionLineType.Bezier}
+      connectionMode={ConnectionMode.Loose}
+      connectionRadius={28}
       onInit={onInit}
       onPaneClick={() => setSelection(null)}
       onMove={(_, viewport) => setViewport(viewport)}
@@ -128,12 +181,23 @@ function CanvasInner() {
         updatePosition(node.id, node.position);
         finalizeMoveSnapshot();
       }}
+      onConnect={onConnect}
+      onConnectStart={(_, params) => {
+        const pinId = parsePinId(params.handleId);
+        if (!params.nodeId || !pinId) {
+          setActiveDragSource(null);
+          return;
+        }
+        setActiveDragSource({ componentId: params.nodeId, pinId });
+      }}
+      onConnectEnd={() => setActiveDragSource(null)}
       onNodeClick={(_, node) => setSelection({ type: "component", id: node.id })}
       onEdgeClick={(_, edge) => setSelection({ type: "connection", id: edge.id })}
       onNodesChange={onNodesChange}
       nodesDraggable
       deleteKeyCode={null}
       selectionKeyCode={null}
+      defaultEdgeOptions={{ type: "circuitEdge" }}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={24} color="rgba(148, 163, 184, 0.22)" />

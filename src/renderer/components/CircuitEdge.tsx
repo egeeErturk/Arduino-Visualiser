@@ -22,7 +22,17 @@ export default function CircuitEdge({
 
   return (
     <>
-      <BaseEdge id={id} path={path} style={{ stroke: data?.color || "#f97316", strokeWidth: selected ? 5 : 3 }} />
+      <BaseEdge
+        id={id}
+        path={path}
+        style={{
+          stroke: data?.color || "#f97316",
+          strokeWidth: selected ? 5 : 3.5,
+          filter: selected ? "drop-shadow(0 0 12px rgba(249, 115, 22, 0.4))" : "none",
+          opacity: selected ? 1 : 0.9,
+          transition: "stroke-width 160ms ease, opacity 160ms ease",
+        }}
+      />
       <EdgeLabelRenderer>
         <div
           className={`edge-label ${selected ? "visible" : ""}`}

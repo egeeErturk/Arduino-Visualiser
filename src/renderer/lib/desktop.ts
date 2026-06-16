@@ -60,3 +60,13 @@ export function downloadJson(defaultName: string, projectJson: string) {
   link.click();
   URL.revokeObjectURL(url);
 }
+
+export function downloadTextFile(defaultName: string, content: string, extension: string, mimeType = "text/plain") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${defaultName}.${extension}`;
+  link.click();
+  URL.revokeObjectURL(url);
+}

@@ -30,6 +30,7 @@ The desktop architecture, typed schema, renderer UI, and packaging scripts are i
 - Undo and redo
 - Keyboard shortcuts
 - Heuristic educational warnings
+- Arduino sketch generation with starter `.ino` export
 
 ## How To Run Locally
 
@@ -69,6 +70,12 @@ Build the renderer and Electron TypeScript output:
 
 ```bash
 npm run build
+```
+
+Verify the Arduino sketch generator scenarios:
+
+```bash
+npm run verify:sketch
 ```
 
 ## How To Package The Desktop App
@@ -112,6 +119,23 @@ src/
 - `Export JSON` writes the current project to a chosen location
 - `Autosave` stores a recovery backup
 
+## Arduino Sketch Generator
+
+- `Generate Code` analyzes the current circuit graph and looks for Arduino-connected:
+  - LEDs
+  - buttons
+  - servos
+  - potentiometers
+  - buzzers
+  - ultrasonic sensors
+- The generator produces:
+  - pin definitions
+  - `setup()`
+  - `loop()`
+- Output is shown in a dedicated modal.
+- You can copy the generated code to the clipboard or save it as an `.ino` file.
+- Generated code is a starter template and may require manual refinement.
+
 ## Keyboard Shortcuts
 
 - `Ctrl/Cmd + S` Save
@@ -129,6 +153,7 @@ src/
 - Native Electron save/open/export/import flows still need a complete manual click-through verification pass.
 - There are no automated tests yet.
 - Drag-from-handle wire authoring is not implemented; the editor still uses the click-pin-to-click-pin model.
+- Sketch generation is heuristic and only emits starter code for the currently supported Arduino-related components.
 
 ## Troubleshooting
 

@@ -12,6 +12,7 @@
     "electron:launch": "wait-on tcp:5173 dist-electron/main/index.js dist-electron/preload/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
     "build": "vite build && tsc -p tsconfig.electron.json",
     "electron:build": "vite build && tsc -p tsconfig.electron.json && node scripts/run-electron-builder.mjs",
+    "verify:sketch": "node scripts/verify-sketch-generator.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint ."
   },
