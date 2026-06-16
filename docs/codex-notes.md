@@ -79,3 +79,47 @@ npm run build
 npm run electron:dev
 npm run electron:build
 ```
+
+## 2026-06-16 QA Stabilization Pass
+
+### Bugs Found
+
+- Sidebar click placement stacked new components on top of each other, which made node selection unreliable.
+- React Flow warned that `nodeTypes` and `edgeTypes` were being recreated during runtime.
+- Undo could succeed while redo was silently disabled because non-history mutations like viewport updates cleared `historyFuture`.
+- The global keyboard shortcut effect re-registered on every render, which risked duplicate shortcut handlers.
+- Rename actions were not tracked in undo history even though rename is meant to be undoable.
+- Save and Save As marked the project clean but also polluted undo history by pushing the current state as if it were a loaded project.
+- Windows packaging could fail on repeat runs when `release/win-unpacked` already existed.
+
+### Bugs Fixed
+
+- Added collision-aware automatic offset placement for sidebar-added components.
+- Hoisted React Flow type maps out of the canvas render path.
+- Preserved the redo stack for non-history mutations.
+- Added stable dependencies to the keyboard shortcut effect so listeners are not duplicated on rerender.
+- Made rename operations participate in history tracking.
+- Added a dedicated saved-state helper so save actions stop adding bogus undo entries.
+- Cleaned stale Windows unpacked output in the Electron Builder wrapper before packaging.
+
+### QA Results
+
+- Verified in the live renderer:
+  - app loads
+  - component add flow works
+  - zoom controls work
+  - undo works
+  - redo works after fix
+  - malformed JSON import shows an error instead of crashing
+  - warning generation is active
+- Verified from process/build checks:
+  - Electron dev processes launch
+  - Windows packaging completes after stabilization fixes
+- Not fully verified end-to-end in this environment:
+  - native Electron file dialogs
+  - packaged EXE click-through UX
+  - full inspector rename/delete flow by Windows automation
+
+### Environment Limitation
+
+- The Windows Computer Use runtime failed to bootstrap in this session, so full native desktop click-through automation was not trustworthy. Renderer QA was completed through the in-app browser and desktop build/process verification was completed through shell checks.

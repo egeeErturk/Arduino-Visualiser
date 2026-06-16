@@ -18,10 +18,11 @@ import CircuitEdge from "./CircuitEdge";
 import { getHandleId } from "../lib/graph";
 import { useCircuitStore } from "../store/useCircuitStore";
 
+const nodeTypes = { circuitNode: CircuitNode };
+const edgeTypes = { circuitEdge: CircuitEdge };
+
 function CanvasInner() {
   const reactFlow = useReactFlow();
-  const nodeTypes = useMemo(() => ({ circuitNode: CircuitNode }), []);
-  const edgeTypes = useMemo(() => ({ circuitEdge: CircuitEdge }), []);
   const project = useCircuitStore((state) => state.project);
   const selection = useCircuitStore((state) => state.selection);
   const warnings = useCircuitStore((state) => state.warnings);

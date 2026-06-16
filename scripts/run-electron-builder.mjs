@@ -22,6 +22,15 @@ const env = { ...process.env };
 const nodeBinDir = path.dirname(process.execPath);
 env.PATH = prependPathSegment(env.PATH, nodeBinDir);
 
+for (const stalePath of [
+  path.resolve("release", "win-unpacked"),
+  path.resolve("release", "win-unpacked.tmp"),
+]) {
+  if (fs.existsSync(stalePath)) {
+    fs.rmSync(stalePath, { recursive: true, force: true });
+  }
+}
+
 const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
 if (systemRoot) {
   env.PATH = prependPathSegment(env.PATH, systemRoot);

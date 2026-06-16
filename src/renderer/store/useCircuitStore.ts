@@ -63,6 +63,24 @@ function validate(project: CircuitProject) {
   return validateProject(project);
 }
 
+function getNextPlacementPosition(project: CircuitProject, requested: Position): Position {
+  const matchingCount = project.components.filter(
+    (component) =>
+      Math.abs(component.position.x - requested.x) < 12 &&
+      Math.abs(component.position.y - requested.y) < 12,
+  ).length;
+
+  if (matchingCount === 0) {
+    return requested;
+  }
+
+  const offset = 36;
+  return {
+    x: requested.x + matchingCount * offset,
+    y: requested.y + matchingCount * offset,
+  };
+}
+
 export const useCircuitStore = create<EditorState>((set, get) => ({
   project: createEmptyProject(),
   filePath: null,
@@ -101,13 +119,15 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
     const before = cloneProject(get().project);
     recipe(current);
     withUpdatedTimestamp(current);
+    const shouldRecordHistory = options?.recordHistory !== false;
+    const shouldClearFuture = options?.clearFuture ?? shouldRecordHistory;
     set((state) => ({
       ...state,
       project: current,
       dirty: options?.markDirty ?? true,
       warnings: validate(current),
-      historyPast: options?.recordHistory === false ? state.historyPast : [...state.historyPast, before],
-      historyFuture: options?.clearFuture === false ? state.historyFuture : [],
+      historyPast: shouldRecordHistory ? [...state.historyPast, before] : state.historyPast,
+      historyFuture: shouldClearFuture ? [] : state.historyFuture,
     }));
   },
   setSelection(selection) {
@@ -122,7 +142,8 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
       return;
     }
     get().mutateProject((draft) => {
-      const component = createComponentFromDefinition(definition, position);
+      const nextPosition = getNextPlacementPosition(draft, position);
+      const component = createComponentFromDefinition(definition, nextPosition);
       draft.components.push(component);
     });
   },
@@ -160,7 +181,7 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
       if (component) {
         component.name = name;
       }
-    }, { recordHistory: false });
+    });
   },
   deleteSelected() {
     const selection = get().selection;
@@ -305,5 +326,14 @@ export function restoreInitialProject(project: CircuitProject, filePath: string 
     filePath,
     dirty,
     resetHistory: true,
+  });
+}
+
+export function markProjectSaved(project: CircuitProject, filePath: string | null) {
+  useCircuitStore.getState().setProject(project, {
+    filePath,
+    dirty: false,
+    resetHistory: false,
+    pushCurrentToHistory: false,
   });
 }

@@ -152,3 +152,4 @@ If `npm run electron:build` fails:
 5. if Electron Builder reports `No JSON content found in output`, verify your npm shim is valid and not a broken wrapper
 
 This repository now routes `npm run electron:build` through `scripts/run-electron-builder.mjs`, which injects a working `npm.cmd` shim for Electron Builder subprocesses when the surrounding runtime does not expose one correctly.
+The same wrapper also removes stale `release/win-unpacked` staging folders before packaging so repeated Windows builds do not fail on a leftover rename target.

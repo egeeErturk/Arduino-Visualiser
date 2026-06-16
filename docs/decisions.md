@@ -23,6 +23,7 @@ Electron Builder was kept as the packaging tool, but `electron:build` now runs t
 - the active Node executable
 - Windows PowerShell
 - a valid `npm.cmd` entry point derived from the current `npm_execpath`
+- a clean Windows unpack target by removing stale `release/win-unpacked` staging directories before packaging
 
 This approach is cleaner than hardcoding machine-specific tool paths into `package.json`, and it keeps normal local developer environments working unchanged.
 

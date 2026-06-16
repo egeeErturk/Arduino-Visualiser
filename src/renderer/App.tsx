@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Download,
@@ -20,7 +20,7 @@ import { catalogByType } from "../shared/catalog";
 import { createEmptyProject, parseProjectJson, serializeProject } from "../shared/project";
 import { confirmDiscard, downloadJson, getAutosave, readJsonFileFromBrowser, setAutosave } from "./lib/desktop";
 import CircuitCanvas from "./components/CircuitCanvas";
-import { useCircuitStore, componentLibrary, replaceLoadedProject, restoreInitialProject } from "./store/useCircuitStore";
+import { useCircuitStore, componentLibrary, markProjectSaved, replaceLoadedProject, restoreInitialProject } from "./store/useCircuitStore";
 import "./styles.css";
 
 export default function App() {
@@ -122,51 +122,55 @@ export default function App() {
     void restore();
   }, []);
 
-  useEffect(() => {
-    const handleKeydown = async (event: KeyboardEvent) => {
-      const isMeta = event.ctrlKey || event.metaKey;
-      if (isMeta && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          await handleSaveAs();
-        } else {
-          await handleSave();
-        }
+  const handleKeyboardShortcut = useEffectEvent(async (event: KeyboardEvent) => {
+    const isMeta = event.ctrlKey || event.metaKey;
+    if (isMeta && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        await handleSaveAs();
+      } else {
+        await handleSave();
       }
-      if (isMeta && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        await handleOpen();
-      }
-      if (isMeta && event.key.toLowerCase() === "e") {
-        event.preventDefault();
-        await handleExport();
-      }
-      if (isMeta && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          redo();
-        } else {
-          undo();
-        }
-      }
-      if (isMeta && event.key.toLowerCase() === "y") {
-        event.preventDefault();
+    }
+    if (isMeta && event.key.toLowerCase() === "o") {
+      event.preventDefault();
+      await handleOpen();
+    }
+    if (isMeta && event.key.toLowerCase() === "e") {
+      event.preventDefault();
+      await handleExport();
+    }
+    if (isMeta && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
         redo();
+      } else {
+        undo();
       }
-      if (event.key === "Escape") {
-        setPendingPin(null);
-        setSelection(null);
+    }
+    if (isMeta && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      redo();
+    }
+    if (event.key === "Escape") {
+      setPendingPin(null);
+      setSelection(null);
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      const active = document.activeElement?.tagName;
+      if (active !== "INPUT" && active !== "TEXTAREA") {
+        deleteSelected();
       }
-      if (event.key === "Delete" || event.key === "Backspace") {
-        const active = document.activeElement?.tagName;
-        if (active !== "INPUT" && active !== "TEXTAREA") {
-          deleteSelected();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+    }
   });
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      void handleKeyboardShortcut(event);
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
 
   async function maybeDiscardChanges() {
     if (!dirty) {
@@ -220,7 +224,7 @@ export default function App() {
     if (window.desktop && filePath) {
       const result = await window.desktop.saveCircuit({ filePath, projectJson });
       if (!result.canceled) {
-        replaceLoadedProject(project, result.filePath ?? filePath, false);
+        markProjectSaved(project, result.filePath ?? filePath);
         setFeedback("Saved circuit.");
       }
       return;
@@ -236,14 +240,14 @@ export default function App() {
     if (window.desktop) {
       const result = await window.desktop.saveCircuitAs({ defaultName: baseName, projectJson });
       if (!result.canceled) {
-        replaceLoadedProject(project, result.filePath ?? null, false);
+        markProjectSaved(project, result.filePath ?? null);
         setFeedback("Saved circuit as file.");
       }
       return;
     }
 
     downloadJson(baseName, projectJson);
-    replaceLoadedProject(project, null, false);
+    markProjectSaved(project, null);
     setFeedback("Downloaded circuit JSON.");
   }
 
