@@ -67,6 +67,10 @@ body {
   background: transparent;
 }
 
+select {
+  font: inherit;
+}
+
 button,
 input,
 textarea {
@@ -83,6 +87,17 @@ button {
   display: flex;
   flex-direction: column;
   color: var(--text-primary);
+}
+
+.professional-shell {
+  height: 100vh;
+}
+
+.workspace-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -195,6 +210,12 @@ button {
   min-height: 0;
 }
 
+.resizable-panel {
+  resize: horizontal;
+  min-width: 260px;
+  max-width: 420px;
+}
+
 .side-panel {
   padding: 18px;
   overflow: auto;
@@ -281,6 +302,7 @@ button {
   gap: 14px;
   padding: 18px;
   min-width: 0;
+  min-height: 0;
 }
 
 .canvas-header {
@@ -288,6 +310,12 @@ button {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+}
+
+.project-header-fields {
+  display: flex;
+  gap: 10px;
+  min-width: min(420px, 100%);
 }
 
 .canvas-header h2 {
@@ -316,6 +344,15 @@ button {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.connection-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
 }
 
 .warning-chip {
@@ -383,6 +420,14 @@ button {
   place-items: center;
   text-align: center;
   pointer-events: none;
+}
+
+.professional-empty {
+  padding: 18px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
 }
 
 .empty-state h3 {
@@ -1073,6 +1118,16 @@ button {
   color: #2563eb;
 }
 
+.pin.drag-invalid .pin-dot {
+  background: #dc2626;
+  transform: scale(1.08);
+  box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.12);
+}
+
+.pin.drag-invalid .pin-label {
+  color: #dc2626;
+}
+
 .pin.drag-source .pin-label,
 .pin-hit:hover .pin-label {
   transform: translateY(-1px);
@@ -1115,6 +1170,106 @@ button {
   background: var(--bg-card);
   border: 1px solid var(--border-soft);
   box-shadow: var(--shadow-soft);
+}
+
+.bottom-panel {
+  padding: 14px 18px 18px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-soft);
+}
+
+.resizable-bottom-panel {
+  resize: vertical;
+  overflow: auto;
+  min-height: 180px;
+  max-height: 40vh;
+}
+
+.bottom-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.bottom-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.bottom-tabs button {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-soft);
+}
+
+.bottom-tabs .tab-active {
+  color: var(--text-primary);
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: var(--shadow-soft);
+}
+
+.bottom-panel-body {
+  display: grid;
+  gap: 10px;
+}
+
+.output-warning,
+.activity-entry {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  border: 1px solid var(--border-soft);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.arduino-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.arduino-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.arduino-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  border: 1px solid var(--border-soft);
+}
+
+.arduino-card span {
+  color: var(--text-muted);
+}
+
+.arduino-card select {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  color: var(--text-primary);
+}
+
+.output-warning span {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+.compact-code {
+  min-height: 220px;
+  max-height: 28vh;
 }
 
 .inspector-card-header {
@@ -1291,6 +1446,94 @@ button {
   line-height: 1.55;
 }
 
+.dashboard-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-card {
+  padding: 18px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  border: 1px solid var(--border-soft);
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-actions,
+.template-list,
+.recent-list,
+.shortcut-list,
+.settings-grid,
+.about-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.template-card,
+.recent-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  border: 1px solid var(--border-soft);
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.template-card small,
+.recent-card small,
+.template-card span,
+.recent-card span,
+.shortcut-row span {
+  color: var(--text-muted);
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.settings-grid label,
+.inspector-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-grid select,
+.inspector-card select {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 11px 12px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+}
+
+.splash-state {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 24px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.error-state {
+  color: var(--danger-text);
+}
+
+.interactive {
+  cursor: pointer;
+  border: none;
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -1340,6 +1583,11 @@ button {
   to { stroke-dashoffset: 0; }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 1320px) {
   .workspace-grid {
     grid-template-columns: 280px minmax(0, 1fr);
@@ -1368,8 +1616,22 @@ button {
     align-items: stretch;
   }
 
+  .project-header-fields,
+  .bottom-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .arduino-grid {
+    grid-template-columns: 1fr;
+  }
+
   .pin-row,
   .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shortcut-row {
     grid-template-columns: 1fr;
   }
 }

@@ -1,14 +1,22 @@
-import type { CircuitComponent, CircuitPin, CircuitProject } from "./types.js";
+import { boardByType } from "./boards.js";
+import type {
+  CircuitComponent,
+  CircuitPin,
+  CircuitProject,
+  GeneratorContext,
+  GeneratorPlugin,
+  GeneratorSection,
+} from "./types.js";
 
+type ArduinoBoard = "arduino-uno" | "arduino-nano";
 type SupportedComponentType =
   | "led"
   | "push-button"
-  | "servo-motor"
-  | "potentiometer"
+  | "resistor"
   | "buzzer"
+  | "potentiometer"
+  | "servo-motor"
   | "ultrasonic-sensor";
-
-type ArduinoBoard = Extract<CircuitComponent["type"], "arduino-uno" | "arduino-nano">;
 
 interface PinLink {
   component: CircuitComponent;
@@ -32,6 +40,7 @@ export interface SketchAnalysis {
   boardType: ArduinoBoard | null;
   ledBindings: ArduinoDeviceBinding[];
   buttonBindings: ArduinoDeviceBinding[];
+  resistorBindings: ArduinoDeviceBinding[];
   servoBindings: ArduinoDeviceBinding[];
   potentiometerBindings: ArduinoDeviceBinding[];
   buzzerBindings: ArduinoDeviceBinding[];
@@ -49,9 +58,10 @@ const passThroughTypes = new Set(["resistor", "breadboard", "jumper-wire"]);
 const supportedTypes = new Set<SupportedComponentType>([
   "led",
   "push-button",
-  "servo-motor",
-  "potentiometer",
+  "resistor",
   "buzzer",
+  "potentiometer",
+  "servo-motor",
   "ultrasonic-sensor",
 ]);
 
@@ -72,6 +82,18 @@ function normalizeName(name: string) {
 function indent(lines: string[], level = 1) {
   const prefix = "  ".repeat(level);
   return lines.map((line) => (line ? `${prefix}${line}` : ""));
+}
+
+function dedupe<T>(items: T[], getKey: (item: T) => string) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function createPinLookup(project: CircuitProject) {
@@ -110,8 +132,8 @@ function traverseFromPin(
   if (visited.has(key)) {
     return [];
   }
-  visited.add(key);
 
+  visited.add(key);
   const directLinks = pinLookup.get(key) ?? [];
   const resolved: PinLink[] = [];
 
@@ -120,40 +142,25 @@ function traverseFromPin(
       for (const nextPin of link.component.pins.filter((candidate) => candidate.id !== link.pin.id)) {
         resolved.push(...traverseFromPin(link.component, nextPin, pinLookup, visited));
       }
-      continue;
+    } else {
+      resolved.push(link);
     }
-
-    resolved.push(link);
   }
 
   return resolved;
 }
 
-function dedupeBindings(bindings: ArduinoDeviceBinding[]) {
-  const seen = new Set<string>();
-  return bindings.filter((binding) => {
-    const key = `${binding.component.id}:${binding.pin.id}:${binding.arduinoPinLabel}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
-function findBoard(project: CircuitProject) {
-  return project.components.find((component) =>
+function analyzeCircuit(project: CircuitProject): SketchAnalysis {
+  const board = project.components.find((component) =>
     component.type === "arduino-uno" || component.type === "arduino-nano",
   ) ?? null;
-}
 
-function analyzeCircuit(project: CircuitProject): SketchAnalysis {
-  const board = findBoard(project);
-  const empty: SketchAnalysis = {
+  const analysis: SketchAnalysis = {
     board,
-    boardType: board ? (board.type as ArduinoBoard) : null,
+    boardType: board?.type as ArduinoBoard | null,
     ledBindings: [],
     buttonBindings: [],
+    resistorBindings: [],
     servoBindings: [],
     potentiometerBindings: [],
     buzzerBindings: [],
@@ -162,8 +169,8 @@ function analyzeCircuit(project: CircuitProject): SketchAnalysis {
   };
 
   if (!board) {
-    empty.notes.push("No Arduino Uno or Nano was found in the current circuit.");
-    return empty;
+    analysis.notes.push("No Arduino Uno or Nano was found in the current circuit.");
+    return analysis;
   }
 
   const pinLookup = createPinLookup(project);
@@ -183,18 +190,11 @@ function analyzeCircuit(project: CircuitProject): SketchAnalysis {
     }
 
     if (component.type === "ultrasonic-sensor") {
-      const trigPin = component.pins.find((pin) => pin.id === "trig");
-      const echoPin = component.pins.find((pin) => pin.id === "echo");
-      const trigBinding = trigPin ? byComponentPin.get(`${component.id}:${trigPin.id}`)?.[0] ?? null : null;
-      const echoBinding = echoPin ? byComponentPin.get(`${component.id}:${echoPin.id}`)?.[0] ?? null : null;
-
-      if (trigBinding || echoBinding) {
-        empty.ultrasonicBindings.push({
-          component,
-          trigPinLabel: trigBinding,
-          echoPinLabel: echoBinding,
-        });
-      }
+      analysis.ultrasonicBindings.push({
+        component,
+        trigPinLabel: byComponentPin.get(`${component.id}:trig`)?.[0] ?? null,
+        echoPinLabel: byComponentPin.get(`${component.id}:echo`)?.[0] ?? null,
+      });
       continue;
     }
 
@@ -202,54 +202,61 @@ function analyzeCircuit(project: CircuitProject): SketchAnalysis {
       const arduinoPins = byComponentPin.get(`${component.id}:${pin.id}`) ?? [];
       for (const arduinoPinLabel of arduinoPins) {
         const binding = { component, pin, arduinoPinLabel };
+
         if (component.type === "led" && pin.id === "anode") {
-          empty.ledBindings.push(binding);
+          analysis.ledBindings.push(binding);
         }
         if (component.type === "push-button") {
-          empty.buttonBindings.push(binding);
+          analysis.buttonBindings.push(binding);
+        }
+        if (component.type === "resistor") {
+          analysis.resistorBindings.push(binding);
         }
         if (component.type === "servo-motor" && pin.id === "signal") {
-          empty.servoBindings.push(binding);
+          analysis.servoBindings.push(binding);
         }
         if (component.type === "potentiometer" && pin.id === "signal") {
-          empty.potentiometerBindings.push(binding);
+          analysis.potentiometerBindings.push(binding);
         }
         if (component.type === "buzzer" && pin.id === "positive") {
-          empty.buzzerBindings.push(binding);
+          analysis.buzzerBindings.push(binding);
         }
       }
     }
   }
 
-  empty.ledBindings = dedupeBindings(empty.ledBindings);
-  empty.buttonBindings = dedupeBindings(empty.buttonBindings);
-  empty.servoBindings = dedupeBindings(empty.servoBindings);
-  empty.potentiometerBindings = dedupeBindings(empty.potentiometerBindings);
-  empty.buzzerBindings = dedupeBindings(empty.buzzerBindings);
+  analysis.ledBindings = dedupe(analysis.ledBindings, (item) => `${item.component.id}:${item.arduinoPinLabel}`);
+  analysis.buttonBindings = dedupe(analysis.buttonBindings, (item) => `${item.component.id}:${item.arduinoPinLabel}`);
+  analysis.resistorBindings = dedupe(analysis.resistorBindings, (item) => `${item.component.id}:${item.arduinoPinLabel}`);
+  analysis.servoBindings = dedupe(analysis.servoBindings, (item) => `${item.component.id}:${item.arduinoPinLabel}`);
+  analysis.potentiometerBindings = dedupe(analysis.potentiometerBindings, (item) => `${item.component.id}:${item.arduinoPinLabel}`);
+  analysis.buzzerBindings = dedupe(analysis.buzzerBindings, (item) => `${item.component.id}:${item.arduinoPinLabel}`);
+  analysis.ultrasonicBindings = dedupe(
+    analysis.ultrasonicBindings.filter((binding) => binding.trigPinLabel || binding.echoPinLabel),
+    (item) => item.component.id,
+  );
 
-  if (
-    empty.ledBindings.length === 0 &&
-    empty.buttonBindings.length === 0 &&
-    empty.servoBindings.length === 0 &&
-    empty.potentiometerBindings.length === 0 &&
-    empty.buzzerBindings.length === 0 &&
-    empty.ultrasonicBindings.length === 0
-  ) {
-    empty.notes.push("No supported Arduino-connected components were detected for starter sketch generation.");
+  if (analysis.resistorBindings.length > 0) {
+    analysis.notes.push(`Detected ${analysis.resistorBindings.length} Arduino-connected resistor path(s).`);
   }
 
-  return empty;
+  if (
+    analysis.ledBindings.length === 0 &&
+    analysis.buttonBindings.length === 0 &&
+    analysis.servoBindings.length === 0 &&
+    analysis.potentiometerBindings.length === 0 &&
+    analysis.buzzerBindings.length === 0 &&
+    analysis.ultrasonicBindings.length === 0
+  ) {
+    analysis.notes.push("No supported Arduino-connected components were detected for starter sketch generation.");
+  }
+
+  return analysis;
 }
 
-function generateCode(project: CircuitProject, analysis: SketchAnalysis) {
-  const includes = new Set<string>();
-  const definitions: string[] = [];
-  const setupLines: string[] = ["Serial.begin(9600);"];
-  const loopLines: string[] = [];
-  const notes = [...analysis.notes];
+function createReserveName() {
   const usedNames = new Set<string>();
-
-  const reserveName = (base: string) => {
+  return (base: string) => {
     let candidate = normalizeName(base);
     let suffix = 2;
     while (usedNames.has(candidate)) {
@@ -259,159 +266,224 @@ function generateCode(project: CircuitProject, analysis: SketchAnalysis) {
     usedNames.add(candidate);
     return candidate;
   };
+}
 
-  const ledVars = analysis.ledBindings.map((binding) => ({
-    name: reserveName(`${binding.component.name}Pin`),
-    binding,
-  }));
-  const buttonVars = analysis.buttonBindings.map((binding) => ({
-    name: reserveName(`${binding.component.name}Pin`),
-    binding,
-  }));
-  const servoVars = analysis.servoBindings.map((binding) => ({
-    objectName: reserveName(`${binding.component.name}Servo`),
-    pinName: reserveName(`${binding.component.name}Pin`),
-    binding,
-  }));
-  const potentiometerVars = analysis.potentiometerBindings.map((binding) => ({
-    name: reserveName(`${binding.component.name}Pin`),
-    binding,
-  }));
-  const buzzerVars = analysis.buzzerBindings.map((binding) => ({
-    name: reserveName(`${binding.component.name}Pin`),
-    binding,
-  }));
-  const ultrasonicVars = analysis.ultrasonicBindings.map((binding) => ({
-    trigName: reserveName(`${binding.component.name}TrigPin`),
-    echoName: reserveName(`${binding.component.name}EchoPin`),
-    binding,
-  }));
+function combineSections(sections: GeneratorSection[]) {
+  return sections.reduce<Required<GeneratorSection>>(
+    (accumulator, section) => ({
+      includes: [...accumulator.includes, ...(section.includes ?? [])],
+      definitions: [...accumulator.definitions, ...(section.definitions ?? [])],
+      setup: [...accumulator.setup, ...(section.setup ?? [])],
+      loop: [...accumulator.loop, ...(section.loop ?? [])],
+      notes: [...accumulator.notes, ...(section.notes ?? [])],
+    }),
+    { includes: [], definitions: [], setup: [], loop: [], notes: [] },
+  );
+}
 
-  for (const led of ledVars) {
-    definitions.push(`const int ${led.name} = ${led.binding.arduinoPinLabel};`);
-    setupLines.push(`pinMode(${led.name}, OUTPUT);`);
-  }
+function createGeneratorPlugins(analysis: SketchAnalysis): GeneratorPlugin[] {
+  return [
+    {
+      kind: "generator",
+      id: "generator:led",
+      supports: (componentType) => componentType === "led",
+      buildSection: () => {
+        const reserveName = createReserveName();
+        const definitions: string[] = [];
+        const setup: string[] = [];
+        const loop: string[] = [];
 
-  for (const button of buttonVars) {
-    definitions.push(`const int ${button.name} = ${button.binding.arduinoPinLabel};`);
-    setupLines.push(`pinMode(${button.name}, INPUT_PULLUP);`);
-  }
+        const ledVars = analysis.ledBindings.map((binding) => ({
+          name: reserveName(`${binding.component.name}Pin`),
+          binding,
+        }));
+        const buttonVars = analysis.buttonBindings.map((binding) => ({
+          name: reserveName(`${binding.component.name}Pin`),
+          binding,
+        }));
 
-  if (servoVars.length > 0) {
-    includes.add("#include <Servo.h>");
-  }
+        for (const led of ledVars) {
+          definitions.push(`const int ${led.name} = ${led.binding.arduinoPinLabel};`);
+          setup.push(`pinMode(${led.name}, OUTPUT);`);
+        }
 
-  for (const servo of servoVars) {
-    definitions.push(`const int ${servo.pinName} = ${servo.binding.arduinoPinLabel};`);
-    definitions.push(`Servo ${servo.objectName};`);
-    setupLines.push(`${servo.objectName}.attach(${servo.pinName});`);
-  }
+        for (const button of buttonVars) {
+          definitions.push(`const int ${button.name} = ${button.binding.arduinoPinLabel};`);
+          setup.push(`pinMode(${button.name}, INPUT_PULLUP);`);
+        }
 
-  for (const potentiometer of potentiometerVars) {
-    definitions.push(`const int ${potentiometer.name} = ${potentiometer.binding.arduinoPinLabel};`);
-  }
+        if (buttonVars.length > 0 && ledVars.length > 0) {
+          loop.push(`int ${buttonVars[0].name}State = digitalRead(${buttonVars[0].name});`);
+          loop.push(`digitalWrite(${ledVars[0].name}, ${buttonVars[0].name}State == LOW ? HIGH : LOW);`);
+          loop.push("delay(20);");
+        } else {
+          for (const led of ledVars) {
+            loop.push(`digitalWrite(${led.name}, HIGH);`);
+            loop.push("delay(500);");
+            loop.push(`digitalWrite(${led.name}, LOW);`);
+            loop.push("delay(500);");
+          }
+        }
 
-  for (const buzzer of buzzerVars) {
-    definitions.push(`const int ${buzzer.name} = ${buzzer.binding.arduinoPinLabel};`);
-    setupLines.push(`pinMode(${buzzer.name}, OUTPUT);`);
-  }
+        return { definitions, setup, loop };
+      },
+    },
+    {
+      kind: "generator",
+      id: "generator:servo",
+      supports: (componentType) => componentType === "servo-motor" || componentType === "potentiometer",
+      buildSection: () => {
+        const reserveName = createReserveName();
+        const includes = analysis.servoBindings.length > 0 ? ["#include <Servo.h>"] : [];
+        const definitions: string[] = [];
+        const setup: string[] = [];
+        const loop: string[] = [];
+        const notes: string[] = [];
 
-  for (const sensor of ultrasonicVars) {
-    if (sensor.binding.trigPinLabel) {
-      definitions.push(`const int ${sensor.trigName} = ${sensor.binding.trigPinLabel};`);
-      setupLines.push(`pinMode(${sensor.trigName}, OUTPUT);`);
-    }
-    if (sensor.binding.echoPinLabel) {
-      definitions.push(`const int ${sensor.echoName} = ${sensor.binding.echoPinLabel};`);
-      setupLines.push(`pinMode(${sensor.echoName}, INPUT);`);
-    }
-  }
+        const servoVars = analysis.servoBindings.map((binding) => ({
+          objectName: reserveName(`${binding.component.name}Servo`),
+          pinName: reserveName(`${binding.component.name}Pin`),
+          binding,
+        }));
+        const potentiometerVars = analysis.potentiometerBindings.map((binding) => ({
+          name: reserveName(`${binding.component.name}Pin`),
+          binding,
+        }));
 
-  if (buttonVars.length > 0 && ledVars.length > 0) {
-    const button = buttonVars[0];
-    const led = ledVars[0];
-    loopLines.push(`int ${button.name}State = digitalRead(${button.name});`);
-    loopLines.push(`digitalWrite(${led.name}, ${button.name}State == LOW ? HIGH : LOW);`);
-    loopLines.push("delay(20);");
-  } else if (ledVars.length > 0) {
-    for (const led of ledVars) {
-      loopLines.push(`digitalWrite(${led.name}, HIGH);`);
-      loopLines.push("delay(500);");
-      loopLines.push(`digitalWrite(${led.name}, LOW);`);
-      loopLines.push("delay(500);");
-    }
-  }
+        for (const potentiometer of potentiometerVars) {
+          definitions.push(`const int ${potentiometer.name} = ${potentiometer.binding.arduinoPinLabel};`);
+        }
 
-  if (servoVars.length > 0) {
-    const controlPot = potentiometerVars[0];
-    for (const servo of servoVars) {
-      if (controlPot) {
-        const readingName = reserveName(`${controlPot.binding.component.name}Value`);
-        const angleName = reserveName(`${servo.binding.component.name}Angle`);
-        loopLines.push(`int ${readingName} = analogRead(${controlPot.name});`);
-        loopLines.push(`int ${angleName} = map(${readingName}, 0, 1023, 0, 180);`);
-        loopLines.push(`${servo.objectName}.write(${angleName});`);
-      } else {
-        loopLines.push(`${servo.objectName}.write(0);`);
-        loopLines.push("delay(600);");
-        loopLines.push(`${servo.objectName}.write(90);`);
-        loopLines.push("delay(600);");
-        loopLines.push(`${servo.objectName}.write(180);`);
-        loopLines.push("delay(600);");
-      }
-    }
-  }
+        for (const servo of servoVars) {
+          definitions.push(`const int ${servo.pinName} = ${servo.binding.arduinoPinLabel};`);
+          definitions.push(`Servo ${servo.objectName};`);
+          setup.push(`${servo.objectName}.attach(${servo.pinName});`);
+          if (potentiometerVars[0]) {
+            const readingName = reserveName(`${potentiometerVars[0].binding.component.name}Value`);
+            const angleName = reserveName(`${servo.binding.component.name}Angle`);
+            loop.push(`int ${readingName} = analogRead(${potentiometerVars[0].name});`);
+            loop.push(`int ${angleName} = map(${readingName}, 0, 1023, 0, 180);`);
+            loop.push(`${servo.objectName}.write(${angleName});`);
+          } else {
+            loop.push(`${servo.objectName}.write(0);`);
+            loop.push("delay(600);");
+            loop.push(`${servo.objectName}.write(90);`);
+            loop.push("delay(600);");
+            loop.push(`${servo.objectName}.write(180);`);
+            loop.push("delay(600);");
+          }
+        }
 
-  for (const sensor of ultrasonicVars) {
-    if (!sensor.binding.trigPinLabel || !sensor.binding.echoPinLabel) {
-      notes.push(`${sensor.binding.component.name} is missing either TRIG or ECHO Arduino pin detection.`);
-      continue;
-    }
+        if (analysis.servoBindings.length > 0 && analysis.potentiometerBindings.length === 0) {
+          notes.push("Servo template uses a sweep pattern because no potentiometer control input was detected.");
+        }
 
-    const durationName = reserveName(`${sensor.binding.component.name}Duration`);
-    const distanceName = reserveName(`${sensor.binding.component.name}DistanceCm`);
-    loopLines.push(`digitalWrite(${sensor.trigName}, LOW);`);
-    loopLines.push("delayMicroseconds(2);");
-    loopLines.push(`digitalWrite(${sensor.trigName}, HIGH);`);
-    loopLines.push("delayMicroseconds(10);");
-    loopLines.push(`digitalWrite(${sensor.trigName}, LOW);`);
-    loopLines.push(`long ${durationName} = pulseIn(${sensor.echoName}, HIGH);`);
-    loopLines.push(`float ${distanceName} = ${durationName} * 0.0343 / 2.0;`);
-    loopLines.push(`Serial.print("${sensor.binding.component.name} distance (cm): ");`);
-    loopLines.push(`Serial.println(${distanceName});`);
-    loopLines.push("delay(250);");
-  }
+        return { includes, definitions, setup, loop, notes };
+      },
+    },
+    {
+      kind: "generator",
+      id: "generator:buzzer",
+      supports: (componentType) => componentType === "buzzer",
+      buildSection: () => {
+        const reserveName = createReserveName();
+        const definitions: string[] = [];
+        const setup: string[] = [];
+        const loop: string[] = [];
 
-  for (const buzzer of buzzerVars) {
-    loopLines.push(`tone(${buzzer.name}, 880, 180);`);
-    loopLines.push("delay(280);");
-  }
+        for (const binding of analysis.buzzerBindings) {
+          const pinName = reserveName(`${binding.component.name}Pin`);
+          definitions.push(`const int ${pinName} = ${binding.arduinoPinLabel};`);
+          setup.push(`pinMode(${pinName}, OUTPUT);`);
+          loop.push(`tone(${pinName}, 880, 180);`);
+          loop.push("delay(280);");
+        }
 
-  if (loopLines.length === 0) {
-    loopLines.push("// Add your control logic here.");
-    loopLines.push("delay(100);");
-  }
+        return { definitions, setup, loop };
+      },
+    },
+    {
+      kind: "generator",
+      id: "generator:ultrasonic",
+      supports: (componentType) => componentType === "ultrasonic-sensor",
+      buildSection: () => {
+        const reserveName = createReserveName();
+        const definitions: string[] = [];
+        const setup: string[] = [];
+        const loop: string[] = [];
+        const notes: string[] = [];
 
-  const orderedIncludes = [...includes];
-  const codeSections = [
-    ...orderedIncludes,
-    ...orderedIncludes.length ? [""] : [],
+        for (const binding of analysis.ultrasonicBindings) {
+          const trigName = reserveName(`${binding.component.name}TrigPin`);
+          const echoName = reserveName(`${binding.component.name}EchoPin`);
+
+          if (binding.trigPinLabel) {
+            definitions.push(`const int ${trigName} = ${binding.trigPinLabel};`);
+            setup.push(`pinMode(${trigName}, OUTPUT);`);
+          }
+          if (binding.echoPinLabel) {
+            definitions.push(`const int ${echoName} = ${binding.echoPinLabel};`);
+            setup.push(`pinMode(${echoName}, INPUT);`);
+          }
+
+          if (!binding.trigPinLabel || !binding.echoPinLabel) {
+            notes.push(`${binding.component.name} is missing either TRIG or ECHO Arduino pin detection.`);
+            continue;
+          }
+
+          const durationName = reserveName(`${binding.component.name}Duration`);
+          const distanceName = reserveName(`${binding.component.name}DistanceCm`);
+          loop.push(`digitalWrite(${trigName}, LOW);`);
+          loop.push("delayMicroseconds(2);");
+          loop.push(`digitalWrite(${trigName}, HIGH);`);
+          loop.push("delayMicroseconds(10);");
+          loop.push(`digitalWrite(${trigName}, LOW);`);
+          loop.push(`long ${durationName} = pulseIn(${echoName}, HIGH);`);
+          loop.push(`float ${distanceName} = ${durationName} * 0.0343 / 2.0;`);
+          loop.push(`Serial.print("${binding.component.name} distance (cm): ");`);
+          loop.push(`Serial.println(${distanceName});`);
+          loop.push("delay(250);");
+        }
+
+        return { definitions, setup, loop, notes };
+      },
+    },
+  ];
+}
+
+function generateCode(project: CircuitProject, analysis: SketchAnalysis) {
+  const board = analysis.boardType ? boardByType[analysis.boardType] : null;
+  const context: GeneratorContext = { project, board };
+  const plugins = createGeneratorPlugins(analysis);
+
+  const activePlugins = plugins.filter((plugin) =>
+    project.components.some((component) => plugin.supports(component.type)),
+  );
+
+  const combined = combineSections(activePlugins.map((plugin) => plugin.buildSection(context)));
+  const includes = dedupe(combined.includes, (item) => item);
+  const definitions = dedupe(combined.definitions, (item) => item);
+  const setup = ["Serial.begin(9600);", ...combined.setup];
+  const loop = combined.loop.length > 0 ? combined.loop : ["// Add your control logic here.", "delay(100);"];
+  const notes = [...analysis.notes, ...combined.notes];
+
+  return [
+    ...includes,
+    ...includes.length ? [""] : [],
     "// Generated code is a starter template and may require manual refinement.",
     ...notes.map((note) => `// Note: ${note}`),
     ...notes.length ? [""] : [],
     ...definitions,
     ...definitions.length ? [""] : [],
     "void setup() {",
-    ...indent(setupLines),
+    ...indent(setup),
     "}",
     "",
     "void loop() {",
-    ...indent(loopLines),
+    ...indent(loop),
     "}",
     "",
-  ];
-
-  return codeSections.join("\n");
+  ].join("\n");
 }
 
 export function analyzeCircuitForSketch(project: CircuitProject) {

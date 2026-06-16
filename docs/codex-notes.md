@@ -162,3 +162,114 @@ npm run electron:build
 
 - Generated code is intentionally a starter template and not a claim of complete automatic firmware synthesis.
 - The generator follows circuit graph connections through simple passive pass-through parts like resistor, breadboard, and jumper wire so Arduino-linked devices can still be recognized in common beginner layouts.
+
+## 2026-06-16 Professional Arduino Software Pass
+
+### Features Added
+
+- Professional desktop application shell with:
+  - top toolbar
+  - left component library
+  - center design canvas
+  - right inspector
+  - bottom output panel
+- Project dashboard with:
+  - blank project start
+  - template-based project creation
+  - recent projects
+- Settings screen
+- About screen
+- Keyboard shortcut help screen
+- Project metadata support:
+  - name
+  - description
+  - author
+  - board type
+- Board abstraction for:
+  - Arduino Uno
+  - Arduino Nano
+- Template library for:
+  - Blink LED
+  - Push Button LED
+  - Traffic Light
+  - Servo Sweep
+  - Ultrasonic Distance Meter
+  - Potentiometer Dimmer
+- Custom `.avc` project format as the primary save/open extension
+- JSON compatibility retained for import/export
+- Recent projects tracking in desktop state
+- Plugin interfaces for:
+  - boards
+  - components
+  - generators
+  - validation
+- Generator engine update to support component-specific generator plugin composition
+- Added resistor awareness to sketch analysis output
+
+### Packaging Stabilization Update
+
+- Removed `electron-store` from the desktop runtime path.
+- Replaced it with lightweight JSON state storage in the Electron user-data directory.
+- Hardened `scripts/run-electron-builder.mjs` with a custom npm shim that returns a clean dependency tree in this environment.
+- Result: Windows packaging now succeeds again after the professional-software expansion.
+
+### Verification Results
+
+- `lint` passed
+- `typecheck` passed
+- `build` passed
+- `verify:sketch` passed
+- `electron:build` passed
+
+### Existing Functionality Status
+
+- Save/load preserved
+- JSON import/export preserved
+- Undo/redo preserved
+- Validation preserved
+- Desktop packaging preserved
+
+### Remaining Limitations
+
+- Plugin interfaces and registries are present, but external runtime plugin loading is not implemented yet.
+- Board support is still limited to Arduino Uno and Arduino Nano.
+- Generated sketches remain starter templates rather than production-ready firmware.
+- Docking is lightweight and panel resizing is intentionally simple rather than a full IDE-style docking framework.
+
+## 2026-06-16 Arduino Workflow Integration Pass
+
+### Features Added
+
+- Arduino CLI service layer in the Electron main process
+- Arduino CLI configuration support:
+  - detect CLI
+  - set CLI path
+  - set serial baud rate
+- Connected board / serial port detection via Arduino CLI
+- Compile generated sketches from the desktop app
+- Upload generated sketches from the desktop app
+- Serial monitor output streaming into the renderer
+- Dedicated Arduino CLI output panel in the bottom workspace
+- Smart circuit assistant analysis panel
+- Pin compatibility rules with:
+  - valid target highlighting
+  - invalid target highlighting
+  - incompatibility explanations
+
+### Architecture Added
+
+- `src/main/arduinoService.ts`
+- `src/shared/circuitAssistant.ts`
+- `src/shared/connectionRules.ts`
+
+### Verification Results
+
+- `lint` passed
+- `typecheck` passed
+- `build` passed
+- `electron:build` passed
+
+### Notes
+
+- Arduino CLI-dependent actions still require a real local `arduino-cli` installation to fully function at runtime.
+- The renderer now surfaces CLI failures cleanly instead of assuming the tool exists.

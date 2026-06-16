@@ -3,6 +3,7 @@ import { catalogByType, componentCatalog } from "../../shared/catalog";
 import { cloneProject, createComponentFromDefinition, createEmptyProject, createId, serializeProject } from "../../shared/project";
 import { validateProject } from "../../shared/validation";
 import type {
+  PinCompatibilityResult,
   CircuitProject,
   CircuitProjectMetadata,
   EditorSelection,
@@ -20,6 +21,7 @@ interface EditorState {
   pendingPin: PendingPin;
   warnings: ValidationWarning[];
   highlightedWarningId: string | null;
+  connectionHint: PinCompatibilityResult | null;
   importModalOpen: boolean;
   importText: string;
   importError: string | null;
@@ -52,6 +54,7 @@ interface EditorState {
   setImportText(value: string): void;
   setImportError(value: string | null): void;
   setHighlightedWarning(id: string | null): void;
+  setConnectionHint(hint: PinCompatibilityResult | null): void;
   updateMetadata(metadata: Partial<CircuitProjectMetadata>): void;
 }
 
@@ -89,6 +92,7 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
   pendingPin: null,
   warnings: validate(createEmptyProject()),
   highlightedWarningId: null,
+  connectionHint: null,
   importModalOpen: false,
   importText: "",
   importError: null,
@@ -105,6 +109,7 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
       pendingPin: null,
       warnings: validate(project),
       highlightedWarningId: null,
+      connectionHint: null,
       historyPast: options?.resetHistory
         ? []
         : options?.pushCurrentToHistory
@@ -299,6 +304,9 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
       highlightedWarningId: id,
       selection: id ? { type: "warning", id } : state.selection,
     }));
+  },
+  setConnectionHint(hint) {
+    set((state) => ({ ...state, connectionHint: hint }));
   },
   updateMetadata(metadata) {
     get().mutateProject((draft) => {

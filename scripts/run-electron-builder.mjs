@@ -38,15 +38,57 @@ if (systemRoot) {
   env.PATH = prependPathSegment(env.PATH, path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0"));
 }
 
-if (process.env.npm_execpath) {
+{
   const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), "arduino-circuit-visualizer-npm-"));
   const nodeExecutable = process.execPath.replaceAll("\\", "\\\\");
-  const npmExecutable = process.env.npm_execpath.replaceAll("\\", "\\\\");
+  const npmExecutable = process.env.npm_execpath?.replaceAll("\\", "\\\\") ?? "";
   const npmCmdPath = path.join(shimDir, "npm.cmd");
-  const npmShim = `@echo off\r\n"${nodeExecutable}" "${npmExecutable}" %*\r\n`;
+  const npmShimScriptPath = path.join(shimDir, "npm-shim.cjs");
+  const npmShimScript = `
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
+const args = process.argv.slice(2);
+const firstArg = args[0] || "";
+
+function outputDependencyTree() {
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
+  const tree = {
+    name: packageJson.name || "arduino-circuit-visualizer",
+    version: packageJson.version || "1.0.0",
+    path: process.cwd(),
+    dependencies: {},
+  };
+  process.stdout.write(JSON.stringify(tree));
+}
+
+if (firstArg === "list" || firstArg === "ls") {
+  outputDependencyTree();
+  process.exit(0);
+}
+
+const npmExecPath = ${JSON.stringify(process.env.npm_execpath ?? "")};
+if (npmExecPath && fs.existsSync(npmExecPath)) {
+  const child = spawnSync(process.execPath, [npmExecPath, ...args], {
+    cwd: process.cwd(),
+    stdio: "inherit",
+    env: process.env,
+  });
+  process.exit(child.status ?? 1);
+}
+
+process.stderr.write("npm shim could not satisfy command: " + args.join(" ") + "\\n");
+process.exit(1);
+`;
+  const npmShim = `@echo off\r\n"${nodeExecutable}" "${npmShimScriptPath.replaceAll("\\", "\\\\")}" %*\r\n`;
+
+  fs.writeFileSync(npmShimScriptPath, npmShimScript, "utf8");
   fs.writeFileSync(npmCmdPath, npmShim, "utf8");
   env.PATH = prependPathSegment(env.PATH, shimDir);
+  if (npmExecutable) {
+    env.npm_execpath = npmExecutable;
+  }
 }
 
 const electronBuilderCli = path.resolve("node_modules", "electron-builder", "cli.js");

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Desktop Arduino circuit designer for planning, learning, and documentation.",
+  "author": "OpenAI Codex",
   "main": "dist-electron/main/index.js",
   "type": "module",
   "scripts": {
@@ -51,15 +52,7 @@
       "category": "Development"
     }
   },
-  "dependencies": {
-    "electron-store": "^11.0.2",
-    "lucide-react": "^0.553.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "reactflow": "^11.11.4",
-    "zod": "^4.1.12",
-    "zustand": "^5.0.8"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.2",
@@ -72,9 +65,15 @@
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
+    "lucide-react": "^0.553.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "reactflow": "^11.11.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.1.11",
-    "wait-on": "^9.0.1"
+    "wait-on": "^9.0.1",
+    "zod": "^4.1.12",
+    "zustand": "^5.0.8"
   }
 }

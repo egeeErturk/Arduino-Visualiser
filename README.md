@@ -1,10 +1,10 @@
 # Arduino Circuit Visualizer
 
-Arduino Circuit Visualizer is a desktop-first Arduino circuit planning tool for visual design, learning, documentation, and pin-to-pin wiring review. It is not an electrical simulator.
+Arduino Circuit Visualizer is a desktop-first Arduino design application for visual circuit planning, beginner-friendly project templates, project metadata management, and starter sketch generation. It is not an electrical simulator.
 
-## Current Project Status
+## Current Product Status
 
-The project has been migrated to:
+The application now ships as a downloadable Electron desktop app built with:
 
 - React
 - TypeScript
@@ -14,23 +14,54 @@ The project has been migrated to:
 - Zustand
 - Zod
 
-The desktop architecture, typed schema, renderer UI, and packaging scripts are in place. Web build, typecheck, Electron development startup, and Windows desktop packaging are now passing in this environment.
+The current release direction is a professional Arduino design workstation with:
+
+- visual circuit authoring
+- `.avc` project files
+- project dashboard and recent projects
+- template library
+- board abstraction
+- plugin-oriented architecture
+- starter Arduino code generation
 
 ## Features
 
-- Desktop application structure with Electron `main` and `preload`
-- Typed circuit schema with validation and import normalization
-- React Flow canvas with pan, zoom, fit view, drag, and wire selection
-- Component library for Arduino-focused parts
-- Click-to-connect pin workflow
-- Structured inspector for components, pins, and wires
-- Manual `Open`, `Save`, `Save As`, `Import JSON`, and `Export JSON`
-- Autosave backup
-- Dirty-state tracking
-- Undo and redo
-- Keyboard shortcuts
-- Heuristic educational warnings
-- Arduino sketch generation with starter `.ino` export
+- Desktop application architecture with Electron `main` and `preload`
+- Typed circuit schema with import normalization and backward-compatible JSON parsing
+- React Flow visual editor with pan, zoom, fit view, node drag, edge selection, and pin wiring
+- Project dashboard with blank-project, template, and recent-project workflows
+- Custom `.avc` project format for primary save/load
+- JSON import/export compatibility
+- Recent desktop projects tracking
+- Project metadata:
+  - name
+  - description
+  - author
+  - board type
+  - created
+  - modified
+- Built-in board support:
+  - Arduino Uno
+  - Arduino Nano
+- Built-in templates:
+  - Blink LED
+  - Push Button LED
+  - Traffic Light
+  - Servo Sweep
+  - Ultrasonic Distance Meter
+  - Potentiometer Dimmer
+- Structured inspector for project, component, pin, wire, and warning details
+- Bottom output panel for warnings, activity, and generated code
+- Arduino starter sketch generation with `.ino` export
+- Arduino CLI integration for detection, compile, upload, and serial monitoring
+- Smart circuit assistant findings panel
+- Pin compatibility hints during connection creation
+- Undo/redo
+- Keyboard shortcuts help
+- Settings screen
+- About screen
+- Heuristic educational validation warnings
+- Windows packaging support through Electron Builder
 
 ## How To Run Locally
 
@@ -52,7 +83,7 @@ Start the desktop app in development mode:
 npm run electron:dev
 ```
 
-## How To Build
+## Verification Commands
 
 Run lint:
 
@@ -66,25 +97,31 @@ Run typecheck:
 npm run typecheck
 ```
 
-Build the renderer and Electron TypeScript output:
+Build the renderer and Electron outputs:
 
 ```bash
 npm run build
 ```
 
-Verify the Arduino sketch generator scenarios:
+Verify Arduino sketch generation scenarios:
 
 ```bash
 npm run verify:sketch
 ```
 
-## How To Package The Desktop App
-
-Run:
+Package the desktop app:
 
 ```bash
 npm run electron:build
 ```
+
+Build the packaged desktop app:
+
+```bash
+npm run electron:build
+```
+
+## Desktop Packaging
 
 Electron Builder is configured for:
 
@@ -94,66 +131,209 @@ Electron Builder is configured for:
 
 Packaged output is written to `release/`.
 
-Generated Windows artifacts:
+Current Windows artifacts:
 
 - `release/Arduino Circuit Visualizer Setup 1.0.0.exe`
 - `release/Arduino Circuit Visualizer 1.0.0.exe`
 - `release/win-unpacked/`
 
-## Project Architecture
+## Project File Format
+
+Primary project extension:
+
+- `.avc`
+
+Meaning:
+
+- Arduino Visual Circuit
+
+Internally, `.avc` files are JSON documents using the shared circuit schema and project metadata model.
+
+Compatibility:
+
+- `Open` accepts `.avc` and legacy `.json`
+- `Import` accepts `.avc` and `.json`
+- `Export` writes compatibility `.json`
+
+## Project Metadata
+
+Stored inside project files:
+
+- `name`
+- `description`
+- `author`
+- `boardType`
+- `createdAt`
+- `updatedAt`
+
+## Project Dashboard
+
+The dashboard provides:
+
+- blank project creation
+- template selection
+- recent projects
+- fast project startup workflow
+
+## Board Support
+
+Current built-in boards:
+
+- Arduino Uno
+- Arduino Nano
+
+The board abstraction is designed for future support of:
+
+- ESP32
+- ESP8266
+- Raspberry Pi Pico
+- STM32
+
+Each board definition includes:
+
+- board identity
+- pin capabilities
+- supported component list
+- default code generation behavior
+
+## Arduino Sketch Generator And CLI Workflow
+
+The `Generate Code` action analyzes the current circuit graph and currently looks for:
+
+- Arduino Uno
+- Arduino Nano
+- LEDs
+- Buttons
+- Resistors
+- Buzzers
+- Potentiometers
+- Servos
+- Ultrasonic Sensors
+
+The generator produces starter code with:
+
+- pin definitions
+- `setup()`
+- `loop()`
+
+The generated code window supports:
+
+- copy to clipboard
+- save/export as `.ino`
+
+The desktop application now also supports Arduino CLI workflow features:
+
+- detect installed Arduino CLI
+- configure Arduino CLI path
+- detect connected boards and serial ports
+- compile generated sketches
+- upload generated sketches
+- view build output
+- view upload output
+- view serial monitor output
+
+Important:
+
+- Generated code is a starter template and may require manual refinement.
+
+## Plugin Architecture
+
+The shared model now includes interfaces for:
+
+- `BoardPlugin`
+- `ComponentPlugin`
+- `GeneratorPlugin`
+- `ValidationPlugin`
+
+Current built-in registries live in `src/shared` and establish the extension path for future:
+
+- new board packs
+- new sensors
+- new component libraries
+- new generator behaviors
+- new validation heuristics
+
+## Smart Circuit Assistant
+
+The `Analyze Circuit` workflow adds a dedicated findings panel for:
+
+- missing resistor
+- missing ground
+- invalid power connection
+- floating input
+- missing required sensor connections
+- duplicate power sources
+
+This sits alongside, rather than replacing, the existing educational validation system.
+
+## Pin Compatibility Engine
+
+During connection creation, the editor now evaluates pin compatibility and provides:
+
+- valid target highlighting
+- invalid target highlighting
+- connection hints
+- incompatibility explanations
+
+## Code Generation Architecture
+
+Code generation is separated from the renderer UI.
+
+Current architecture:
+
+- `src/shared/arduinoSketch.ts`
+  - graph analysis
+  - board-aware sketch generation
+  - component-specific generator plugins
+- `src/shared/boards.ts`
+  - board definitions and capabilities
+- renderer
+  - triggers generation
+  - displays generated code
+  - handles copy/save actions
+
+## Template System
+
+Built-in templates are defined in:
+
+- `src/shared/templates.ts`
+
+Templates provide starter project graphs and metadata for common beginner scenarios.
+
+## Architecture Summary
 
 ```text
 src/
-  main/       Electron main process
-  preload/    Safe IPC bridge
-  renderer/   React app, canvas, UI, store
-  shared/     Schema, catalog, validation logic
+  main/       Electron main process and native desktop file workflow
+  preload/    Safe renderer bridge
+  renderer/   React application shell, canvas, inspector, dashboard, output panels
+  shared/     Schema, boards, plugins, templates, code generation, validation
+scripts/
+  run-electron-builder.mjs
+  verify-sketch-generator.mjs
 ```
-
-## Save / Load System
-
-- `Save` writes to the existing project path when available
-- `Save As` prompts for a `.json` file destination
-- `Open` loads a saved circuit file
-- `Import JSON` supports file import or pasted JSON
-- `Export JSON` writes the current project to a chosen location
-- `Autosave` stores a recovery backup
-
-## Arduino Sketch Generator
-
-- `Generate Code` analyzes the current circuit graph and looks for Arduino-connected:
-  - LEDs
-  - buttons
-  - servos
-  - potentiometers
-  - buzzers
-  - ultrasonic sensors
-- The generator produces:
-  - pin definitions
-  - `setup()`
-  - `loop()`
-- Output is shown in a dedicated modal.
-- You can copy the generated code to the clipboard or save it as an `.ino` file.
-- Generated code is a starter template and may require manual refinement.
 
 ## Keyboard Shortcuts
 
-- `Ctrl/Cmd + S` Save
-- `Ctrl/Cmd + Shift + S` Save As
-- `Ctrl/Cmd + O` Open
-- `Ctrl/Cmd + E` Export
+- `Ctrl/Cmd + S` Save project
+- `Ctrl/Cmd + Shift + S` Save project as
+- `Ctrl/Cmd + O` Open project
+- `Ctrl/Cmd + E` Export compatibility JSON
+- `Ctrl/Cmd + G` Generate Arduino code
+- `Ctrl/Cmd + K` Open keyboard shortcut help
 - `Ctrl/Cmd + Z` Undo
 - `Ctrl/Cmd + Shift + Z` or `Ctrl/Cmd + Y` Redo
 - `Delete` or `Backspace` Delete selected item
-- `Escape` Cancel pending connection or clear selection
+- `Escape` Clear selection or close overlays
 
 ## Known Limitations
 
-- Validation is heuristic, not simulation-grade.
-- Native Electron save/open/export/import flows still need a complete manual click-through verification pass.
-- There are no automated tests yet.
-- Drag-from-handle wire authoring is not implemented; the editor still uses the click-pin-to-click-pin model.
-- Sketch generation is heuristic and only emits starter code for the currently supported Arduino-related components.
+- Validation remains heuristic and is not a circuit simulator.
+- The plugin interfaces and registries are in place, but external third-party plugin loading is not implemented yet.
+- Board support is currently limited to Arduino Uno and Arduino Nano.
+- Generated code is intentionally starter-grade and not production firmware synthesis.
+- Native Electron save/open/export/import flows were validated through build/runtime workflows, but not every manual UX path was exhaustively automated.
+- Arduino CLI behavior depends on the user having `arduino-cli` installed and accessible or configured explicitly in Settings.
 
 ## Troubleshooting
 
@@ -170,11 +350,9 @@ where.exe npm
 
 If `npm run electron:build` fails:
 
-1. run `npm run typecheck`
-2. run `npm run build`
-3. retry packaging
-4. confirm `node`, `npm`, and `powershell.exe` are available from your terminal
-5. if Electron Builder reports `No JSON content found in output`, verify your npm shim is valid and not a broken wrapper
+1. run `npm run lint`
+2. run `npm run typecheck`
+3. run `npm run build`
+4. retry `npm run electron:build`
 
-This repository now routes `npm run electron:build` through `scripts/run-electron-builder.mjs`, which injects a working `npm.cmd` shim for Electron Builder subprocesses when the surrounding runtime does not expose one correctly.
-The same wrapper also removes stale `release/win-unpacked` staging folders before packaging so repeated Windows builds do not fail on a leftover rename target.
+This repository includes `scripts/run-electron-builder.mjs`, which stabilizes Windows packaging in runtimes where Electron Builder cannot rely on a normal global `npm` command. It now injects a controlled npm shim for dependency-tree collection so Windows packaging remains repeatable in this environment.

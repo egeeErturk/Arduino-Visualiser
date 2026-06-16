@@ -1,50 +1,203 @@
 # Architectural Decisions
 
-## React + TypeScript + Vite + Electron
+## Desktop Stack
 
-The earlier zero-dependency JavaScript build was useful only as a rescue path. The project now uses React, TypeScript, Vite, and Electron because the product goal is a maintainable desktop application with typed state, reusable UI structure, and native file operations.
+The application remains on:
+
+- Electron
+- React
+- TypeScript
+- Vite
+- React Flow
+- Zustand
+- Zod
+
+This stack is already stable in the project and supports maintainable desktop delivery, typed data flow, strong rendering behavior, and native file operations.
 
 ## React Flow As The Canvas Engine
 
-React Flow was chosen because it already solves pan, zoom, fit view, draggable nodes, selected edges, and stable canvas behavior. The editor layers the Arduino-specific pin model on top of React Flow custom nodes and edges instead of maintaining a fully custom scene graph.
+React Flow remains the canvas engine because it already provides:
 
-## Shared Schema And Validation Layer
+- pan
+- zoom
+- fit view
+- draggable nodes
+- selected edges
+- stable interaction behavior
 
-`src/shared` holds the circuit schema, component catalog, and validation heuristics so the renderer and desktop shell can rely on the same definitions. Zod is used for runtime validation of imported JSON.
+The application continues to layer Arduino-specific pin and component behavior on top of custom nodes and edges.
 
-## File Save/Load Architecture
+## Shared Domain Layer
 
-Electron handles open/save dialogs and file reads/writes in the main process. The renderer only sees a narrow preload bridge. Autosave remains a backup mechanism, while explicit file save/load is the primary workflow.
+`src/shared` is now the primary product-domain layer. It contains:
 
-## Packaging Wrapper For Electron Builder
+- schema and normalization
+- board definitions
+- plugin interfaces
+- templates
+- code generation
+- validation
 
-Electron Builder was kept as the packaging tool, but `electron:build` now runs through `scripts/run-electron-builder.mjs`. The wrapper does not change the packaged app itself. It only stabilizes packaging by ensuring Electron Builder subprocesses can find:
+This keeps Electron, the renderer, and future extension systems anchored to the same typed model.
 
-- the active Node executable
-- Windows PowerShell
-- a valid `npm.cmd` entry point derived from the current `npm_execpath`
-- a clean Windows unpack target by removing stale `release/win-unpacked` staging directories before packaging
+## Plugin Architecture
 
-This approach is cleaner than hardcoding machine-specific tool paths into `package.json`, and it keeps normal local developer environments working unchanged.
+Plugin interfaces were added for:
 
-## Validation Is Heuristic, Not Simulation
+- `BoardPlugin`
+- `ComponentPlugin`
+- `GeneratorPlugin`
+- `ValidationPlugin`
 
-The product goal is planning and documentation, not physical simulation. Validation rules therefore focus on educational heuristics like direct power shorts, floating inputs, resistor visibility, and suspicious fanout rather than claiming exact electrical correctness.
+The current project uses internal registries rather than third-party runtime plugin loading. That is intentional.
 
-## Arduino Sketch Generation Architecture
+Reason:
 
-The Arduino sketch generator lives in `src/shared/arduinoSketch.ts` instead of inside the React UI. This keeps circuit analysis and code generation reusable, testable, and easier to extend when new components are added.
+- the architecture needs stable extension points first
+- the application should not commit to external plugin loading before the core data model settles
+- internal registries keep the system testable and maintainable while still preparing for future extension work
+
+## Board Abstraction
+
+Boards are now first-class definitions in `src/shared/boards.ts`.
+
+Each board definition includes:
+
+- board type
+- board family
+- description
+- supported components
+- pin capabilities
+- default code generation language/extension
+
+Current boards:
+
+- Arduino Uno
+- Arduino Nano
+
+The structure is intentionally ready for future ESP32, ESP8266, Raspberry Pi Pico, and STM32 additions.
+
+## Code Generation Architecture
+
+The Arduino code generator remains outside the UI and now follows a more extensible structure.
 
 The renderer only:
 
 - triggers generation
-- displays generated code
-- offers copy/export actions
+- shows generated code
+- copies/exports generated output
 
-The generator itself:
+The shared generator layer:
 
-- analyzes the current circuit graph
-- traces Arduino-connected components through simple passive pass-through parts
-- emits starter `setup()` and `loop()` code templates
+- analyzes the circuit graph
+- resolves board-connected components
+- uses component-specific generator plugins
+- composes final `setup()` / `loop()` output
 
-This separation keeps UI concerns out of code generation logic and avoids coupling starter firmware generation to Electron-specific file operations.
+This keeps code generation independent from Electron dialogs and React UI concerns.
+
+## Arduino CLI Service Layer
+
+Arduino CLI integration is handled in a dedicated Electron-side service:
+
+- `src/main/arduinoService.ts`
+
+Reason:
+
+- compile/upload/serial workflows belong in the desktop shell, not in React components
+- CLI execution and process streaming need Node/Electron APIs
+- future board support should remain service-driven rather than UI-driven
+
+The renderer only requests actions and displays results.
+
+Current service responsibilities:
+
+- detect Arduino CLI
+- persist CLI path and baud-rate configuration
+- detect ports and connected boards
+- compile generated sketches
+- upload generated sketches
+- stream serial monitor output back to the renderer
+
+## File Format Strategy
+
+Primary project format:
+
+- `.avc`
+
+Meaning:
+
+- Arduino Visual Circuit
+
+Internally the format is JSON because:
+
+- it is easy to validate with Zod
+- it is easy to debug and migrate
+- it preserves backward compatibility with earlier JSON-based project data
+
+The product now presents `.avc` as the default save/open format while keeping JSON import/export compatibility.
+
+## Project System
+
+Project metadata is now stored directly in project files.
+
+Metadata fields:
+
+- `name`
+- `description`
+- `author`
+- `boardType`
+- `createdAt`
+- `updatedAt`
+
+This supports dashboard UX, recent projects, and future release-quality workflows without adding a separate project database.
+
+## Smart Circuit Assistant
+
+The smart circuit assistant is implemented as a shared analysis layer separate from renderer concerns.
+
+Reason:
+
+- the same graph-analysis rules can support future automated repair hints, reports, or export checks
+- the assistant should not be coupled to one specific panel layout
+
+It currently focuses on actionable workflow findings rather than full simulation.
+
+## Pin Compatibility Engine
+
+Pin compatibility is implemented in a shared rules module so connection validation and connection hints use the same logic.
+
+Reason:
+
+- avoids duplicated ad hoc checks inside React Flow callbacks
+- makes future board-capability-aware connection rules easier to add
+- keeps the UI responsible only for highlighting and messaging
+
+## Recent Projects Storage
+
+The Electron main process now stores desktop state using a lightweight JSON file under the Electron user-data directory instead of `electron-store`.
+
+Reason:
+
+- the packaged desktop app can now run using only built-in Node/Electron modules at runtime
+- Electron Builder packaging no longer depends on a fragile npm-based runtime dependency scan for `electron-store`
+
+This reduced packaging risk and kept the desktop runtime simpler.
+
+## Packaging Wrapper
+
+`scripts/run-electron-builder.mjs` remains the Windows packaging entrypoint.
+
+Its responsibilities are now:
+
+- clean stale `release/win-unpacked` targets
+- provide stable Windows PATH setup
+- inject a controlled `npm.cmd` shim for Electron Builder dependency-tree collection in runtimes where a normal global npm command is unavailable
+
+This is an environment-hardening layer, not a product-feature layer.
+
+## Validation Is Heuristic, Not Simulation
+
+The product goal is design, planning, onboarding, and starter-code generation, not full electrical simulation.
+
+Validation therefore stays heuristic and educational rather than claiming real-world electrical correctness.

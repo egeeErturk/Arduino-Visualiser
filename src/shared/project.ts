@@ -39,9 +39,12 @@ const connectionSchema = z.object({
 });
 
 export const circuitProjectSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   metadata: z.object({
     name: z.string().min(1),
+    description: z.string().optional().default(""),
+    author: z.string().optional().default(""),
+    boardType: z.string().optional().default("arduino-uno"),
     createdAt: z.string().min(1),
     updatedAt: z.string().min(1),
   }),
@@ -78,9 +81,12 @@ export function createComponentFromDefinition(definition: ComponentDefinition, p
 export function createEmptyProject(name = "Untitled Circuit"): CircuitProject {
   const now = new Date().toISOString();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     metadata: {
       name,
+      description: "",
+      author: "",
+      boardType: "arduino-uno",
       createdAt: now,
       updatedAt: now,
     },
@@ -167,12 +173,19 @@ export function normalizeImportedProject(project: CircuitProject): CircuitProjec
     });
   }
 
+  const normalizedMetadata = {
+    name: project.metadata.name,
+    description: project.metadata.description ?? "",
+    author: project.metadata.author ?? "",
+    boardType: project.metadata.boardType ?? "arduino-uno",
+    createdAt: project.metadata.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+
   return {
     ...project,
-    metadata: {
-      ...project.metadata,
-      updatedAt: new Date().toISOString(),
-    },
+    schemaVersion: 2,
+    metadata: normalizedMetadata,
     components: nextComponents,
     connections: nextConnections,
   };

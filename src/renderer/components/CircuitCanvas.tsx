@@ -20,6 +20,7 @@ import CircuitNode from "./CircuitNode";
 import CircuitEdge from "./CircuitEdge";
 import { getHandleId } from "../lib/graph";
 import { useCircuitStore } from "../store/useCircuitStore";
+import { assessPinCompatibility } from "../../shared/connectionRules";
 
 const nodeTypes = { circuitNode: CircuitNode };
 const edgeTypes = { circuitEdge: CircuitEdge };
@@ -41,6 +42,7 @@ function CanvasInner() {
   const highlightedWarningId = useCircuitStore((state) => state.highlightedWarningId);
   const setSelection = useCircuitStore((state) => state.setSelection);
   const queuePin = useCircuitStore((state) => state.queuePin);
+  const setConnectionHint = useCircuitStore((state) => state.setConnectionHint);
   const updatePosition = useCircuitStore((state) => state.updateComponentPosition);
   const beginMoveSnapshot = useCircuitStore((state) => state.beginMoveSnapshot);
   const finalizeMoveSnapshot = useCircuitStore((state) => state.finalizeMoveSnapshot);
@@ -49,26 +51,35 @@ function CanvasInner() {
 
   const highlightedWarning = warnings.find((warning) => warning.id === highlightedWarningId);
 
-  const canConnectPin = useCallback((componentId: string, pinId: string) => {
+  const getCompatibility = useCallback((componentId: string, pinId: string) => {
     if (!activeDragSource) {
-      return false;
+      return null;
     }
 
     if (activeDragSource.componentId === componentId && activeDragSource.pinId === pinId) {
-      return false;
+      return {
+        valid: false,
+        level: "invalid",
+        message: "Choose a different component pin.",
+      } as const;
     }
 
-    return !project.connections.some((connection) =>
-      (connection.fromComponentId === activeDragSource.componentId &&
-        connection.fromPinId === activeDragSource.pinId &&
-        connection.toComponentId === componentId &&
-        connection.toPinId === pinId) ||
-      (connection.toComponentId === activeDragSource.componentId &&
-        connection.toPinId === activeDragSource.pinId &&
-        connection.fromComponentId === componentId &&
-        connection.fromPinId === pinId),
-    );
-  }, [activeDragSource, project.connections]);
+    const sourceComponent = project.components.find((component) => component.id === activeDragSource.componentId);
+    const sourcePin = sourceComponent?.pins.find((pin) => pin.id === activeDragSource.pinId);
+    const targetComponent = project.components.find((component) => component.id === componentId);
+    const targetPin = targetComponent?.pins.find((pin) => pin.id === pinId);
+
+    if (!sourceComponent || !sourcePin || !targetComponent || !targetPin) {
+      return null;
+    }
+
+    return assessPinCompatibility(sourceComponent, sourcePin, targetComponent, targetPin, project.connections);
+  }, [activeDragSource, project.components, project.connections]);
+
+  const canConnectPin = useCallback((componentId: string, pinId: string) => {
+    const result = getCompatibility(componentId, pinId);
+    return result?.valid ?? false;
+  }, [getCompatibility]);
 
   useEffect(() => {
     reactFlow.setViewport(project.viewport);
@@ -89,9 +100,10 @@ function CanvasInner() {
         isWarningTarget: highlightedWarning?.componentIds.includes(component.id) ?? false,
         activeDragSource,
         canConnectPin,
+        getCompatibility,
       },
     }));
-  }, [activeDragSource, canConnectPin, highlightedWarning?.componentIds, pendingPin, project.components, project.connections, selection]);
+  }, [activeDragSource, canConnectPin, getCompatibility, highlightedWarning?.componentIds, pendingPin, project.components, project.connections, selection]);
 
   const edges = useMemo<Edge[]>(() => {
     return project.connections.map((connection) => {
@@ -150,8 +162,20 @@ function CanvasInner() {
       return;
     }
 
+    const compatibility = getCompatibility(connection.target, targetPinId);
+    if (!compatibility?.valid) {
+      setConnectionHint(compatibility ?? {
+        valid: false,
+        level: "invalid",
+        message: "This connection is not allowed.",
+      });
+      setActiveDragSource(null);
+      return;
+    }
+
     queuePin(connection.source, sourcePinId);
     queuePin(connection.target, targetPinId);
+    setConnectionHint(compatibility);
     setActiveDragSource(null);
   };
 
@@ -186,11 +210,19 @@ function CanvasInner() {
         const pinId = parsePinId(params.handleId);
         if (!params.nodeId || !pinId) {
           setActiveDragSource(null);
+          setConnectionHint(null);
           return;
         }
         setActiveDragSource({ componentId: params.nodeId, pinId });
+        setConnectionHint({
+          valid: true,
+          level: "valid",
+          message: "Drag to another compatible pin to create a connection.",
+        });
       }}
-      onConnectEnd={() => setActiveDragSource(null)}
+      onConnectEnd={() => {
+        setActiveDragSource(null);
+      }}
       onNodeClick={(_, node) => setSelection({ type: "component", id: node.id })}
       onEdgeClick={(_, edge) => setSelection({ type: "connection", id: edge.id })}
       onNodesChange={onNodesChange}

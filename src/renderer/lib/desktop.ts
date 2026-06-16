@@ -1,4 +1,5 @@
 const AUTOSAVE_KEY = "arduino-circuit-visualizer:autosave";
+const RECENT_PROJECTS_KEY = "arduino-circuit-visualizer:recent-projects";
 
 export async function getAutosave(): Promise<string | null> {
   if (window.desktop) {
@@ -38,7 +39,7 @@ export async function readJsonFileFromBrowser(): Promise<string | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json,application/json";
+    input.accept = ".avc,.json,application/json";
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) {
@@ -56,7 +57,7 @@ export function downloadJson(defaultName: string, projectJson: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${defaultName}.json`;
+  link.download = `${defaultName}.avc`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -69,4 +70,21 @@ export function downloadTextFile(defaultName: string, content: string, extension
   link.download = `${defaultName}.${extension}`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export async function getRecentProjects() {
+  if (window.desktop) {
+    return window.desktop.getRecentProjects();
+  }
+
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_PROJECTS_KEY) || "[]") as Array<{
+      name: string;
+      filePath: string;
+      lastOpenedAt: string;
+      boardType: string;
+    }>;
+  } catch {
+    return [];
+  }
 }

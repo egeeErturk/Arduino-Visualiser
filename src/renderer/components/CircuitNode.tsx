@@ -2,7 +2,7 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 import { getHandleId } from "../lib/graph";
 import { useCircuitStore } from "../store/useCircuitStore";
-import type { CircuitComponent, CircuitConnection } from "../../shared/types";
+import type { CircuitComponent, CircuitConnection, PinCompatibilityResult } from "../../shared/types";
 
 interface CircuitNodeData {
   component: CircuitComponent;
@@ -12,6 +12,7 @@ interface CircuitNodeData {
   isWarningTarget: boolean;
   activeDragSource: { componentId: string; pinId: string } | null;
   canConnectPin: (componentId: string, pinId: string) => boolean;
+  getCompatibility: (componentId: string, pinId: string) => PinCompatibilityResult | null;
 }
 
 function pinPosition(side: CircuitComponent["pins"][number]["side"]) {
@@ -152,6 +153,7 @@ function renderVisual(component: CircuitComponent) {
 
 function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
   const queuePin = useCircuitStore((state) => state.queuePin);
+  const setConnectionHint = useCircuitStore((state) => state.setConnectionHint);
   const { component } = data;
 
   return (
@@ -184,6 +186,8 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
         );
         const isDragSource = data.activeDragSource?.componentId === component.id && data.activeDragSource.pinId === pin.id;
         const isDragTarget = data.canConnectPin(component.id, pin.id);
+        const compatibility = data.getCompatibility(component.id, pin.id);
+        const isInvalidTarget = !!data.activeDragSource && compatibility?.valid === false && !isDragSource;
 
         return (
           <div
@@ -195,6 +199,7 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
               data.isPending(pin.id) ? "pending" : "",
               isDragSource ? "drag-source" : "",
               isDragTarget ? "drag-target" : "",
+              isInvalidTarget ? "drag-invalid" : "",
             ].join(" ")}
             style={
               pin.side === "left" || pin.side === "right"
@@ -214,6 +219,11 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
               onClick={(event) => {
                 event.stopPropagation();
                 queuePin(component.id, pin.id);
+              }}
+              onMouseEnter={() => {
+                if (data.activeDragSource && compatibility) {
+                  setConnectionHint(compatibility);
+                }
               }}
               title={`${pin.label} (${pin.kind}, ${pin.direction})`}
               aria-label={`${component.name} ${pin.label}`}
