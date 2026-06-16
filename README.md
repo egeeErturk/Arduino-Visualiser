@@ -14,7 +14,7 @@ The project has been migrated to:
 - Zustand
 - Zod
 
-The desktop architecture, typed schema, renderer UI, and packaging scripts are in place. Web build and typecheck are passing. Electron dev startup is wired and launches. Desktop packaging is configured but still needs one successful full packaging pass in this environment.
+The desktop architecture, typed schema, renderer UI, and packaging scripts are in place. Web build, typecheck, Electron development startup, and Windows desktop packaging are now passing in this environment.
 
 ## Features
 
@@ -87,6 +87,12 @@ Electron Builder is configured for:
 
 Packaged output is written to `release/`.
 
+Generated Windows artifacts:
+
+- `release/Arduino Circuit Visualizer Setup 1.0.0.exe`
+- `release/Arduino Circuit Visualizer 1.0.0.exe`
+- `release/win-unpacked/`
+
 ## Project Architecture
 
 ```text
@@ -120,8 +126,7 @@ src/
 ## Known Limitations
 
 - Validation is heuristic, not simulation-grade.
-- Native Electron save/open/export/import flows still need a complete manual verification pass.
-- `npm run electron:build` is configured but the last packaging run failed with an external `ECONNRESET` during packaging.
+- Native Electron save/open/export/import flows still need a complete manual click-through verification pass.
 - There are no automated tests yet.
 - Drag-from-handle wire authoring is not implemented; the editor still uses the click-pin-to-click-pin model.
 
@@ -143,4 +148,7 @@ If `npm run electron:build` fails:
 1. run `npm run typecheck`
 2. run `npm run build`
 3. retry packaging
-4. check network stability and any packaging/signing restrictions
+4. confirm `node`, `npm`, and `powershell.exe` are available from your terminal
+5. if Electron Builder reports `No JSON content found in output`, verify your npm shim is valid and not a broken wrapper
+
+This repository now routes `npm run electron:build` through `scripts/run-electron-builder.mjs`, which injects a working `npm.cmd` shim for Electron Builder subprocesses when the surrounding runtime does not expose one correctly.

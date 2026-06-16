@@ -16,6 +16,16 @@ React Flow was chosen because it already solves pan, zoom, fit view, draggable n
 
 Electron handles open/save dialogs and file reads/writes in the main process. The renderer only sees a narrow preload bridge. Autosave remains a backup mechanism, while explicit file save/load is the primary workflow.
 
+## Packaging Wrapper For Electron Builder
+
+Electron Builder was kept as the packaging tool, but `electron:build` now runs through `scripts/run-electron-builder.mjs`. The wrapper does not change the packaged app itself. It only stabilizes packaging by ensuring Electron Builder subprocesses can find:
+
+- the active Node executable
+- Windows PowerShell
+- a valid `npm.cmd` entry point derived from the current `npm_execpath`
+
+This approach is cleaner than hardcoding machine-specific tool paths into `package.json`, and it keeps normal local developer environments working unchanged.
+
 ## Validation Is Heuristic, Not Simulation
 
 The product goal is planning and documentation, not physical simulation. Validation rules therefore focus on educational heuristics like direct power shorts, floating inputs, resistor visibility, and suspicious fanout rather than claiming exact electrical correctness.

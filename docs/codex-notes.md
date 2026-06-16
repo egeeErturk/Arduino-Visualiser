@@ -10,6 +10,7 @@
 - Added a structured inspector for components, pins, wires, and warnings.
 - Added heuristic validation warnings for common Arduino wiring mistakes.
 - Added desktop packaging scripts and Electron Builder configuration.
+- Fixed the Windows desktop packaging path so `npm run electron:build` completes successfully in this Codex environment.
 
 ## What Features Work
 
@@ -17,6 +18,7 @@
 - `npm run typecheck`
 - `npm run build`
 - `npm run electron:dev` startup wiring
+- `npm run electron:build`
 - React renderer loads successfully in Vite
 - Electron processes launch in dev mode
 - Component library rendering
@@ -31,10 +33,20 @@
 ## What Features Are Incomplete
 
 - Native desktop flows were not fully click-tested end-to-end through the Electron window in this environment.
-- `npm run electron:build` is configured and starts packaging, but the packaging run hit an external `ECONNRESET` failure while downloading/building packaging assets.
 - There are no automated tests yet.
 - React Flow drag-from-handle connection creation is not implemented; the editor still uses the click-pin-to-click-pin model.
 - Packaging verification for macOS and Linux was not possible on this Windows environment.
+
+## Packaging Issue, Root Cause, Fix, And Result
+
+- Original packaging failure: `No JSON content found in output`
+- Immediate trigger: Electron Builder failed while collecting production node modules with npm.
+- Root cause: this runtime did not expose a working global `npm` command to Electron Builder subprocesses. Once `npm` was made discoverable, the bundled `npm.cmd` wrapper still failed because it pointed at a non-standard tool layout and could not resolve its own `npm-cli.js`.
+- Fix: resynced `package-lock.json` with `npm install`, then changed `npm run electron:build` to call `scripts/run-electron-builder.mjs`. That wrapper preserves normal local behavior while injecting:
+  - the current Node executable into `PATH`
+  - Windows PowerShell system paths into `PATH`
+  - a temporary runtime-generated `npm.cmd` shim that points directly to the active `node` and `npm_execpath`
+- Verification result: `npm run electron:build` now succeeds and produces Windows artifacts in `release/`.
 
 ## What Needs To Be Done Tomorrow
 
