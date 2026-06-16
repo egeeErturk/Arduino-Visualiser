@@ -1,9 +1,12 @@
-import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
+import Editor from "@monaco-editor/react";
 import {
   AlertTriangle,
+  Boxes,
   Clipboard,
   CodeXml,
   Download,
+  FileCode2,
   FileInput,
   FolderOpen,
   Hammer,
@@ -28,37 +31,47 @@ import {
   Usb,
 } from "lucide-react";
 import { analyzeCircuitProject } from "../shared/circuitAssistant";
-import { boardByType, boardCatalog } from "../shared/boards";
 import { generateArduinoSketch } from "../shared/arduinoSketch";
-import { catalogByType } from "../shared/catalog";
+import { generateBom, bomToCsv, bomToMarkdown } from "../shared/bom";
+import { detectPinsFromCode, importCodeContent } from "../shared/codeImport";
+import { getBoardByType, getBoardCatalog, getCatalogByType, setRuntimePluginState } from "../shared/plugins";
+import { buildProjectDocumentation, documentationToHtml, documentationToMarkdown } from "../shared/projectDocumentation";
 import { createEmptyProject, parseProjectJson, serializeProject } from "../shared/project";
+import { createInitialSimulationState, stepSimulation, type SimulationState } from "../shared/simulation";
 import { projectTemplates } from "../shared/templates";
-import type { ArduinoCliConfig, ArduinoCliStatus, ArduinoDetectedPort, RecentProjectEntry } from "../shared/types";
+import type { ArduinoCliConfig, ArduinoCliStatus, ArduinoDetectedPort, PluginRuntimeState, ProjectLibraryEntry, RecentProjectEntry } from "../shared/types";
 import {
+  confirmAction,
   confirmDiscard,
   downloadJson,
   downloadTextFile,
+  exportPdfFile,
+  exportTextFile,
   getAutosave,
+  getLibraryProjects,
   getRecentProjects,
   readJsonFileFromBrowser,
   setAutosave,
 } from "./lib/desktop";
 import CircuitCanvas from "./components/CircuitCanvas";
 import {
-  componentLibrary,
+  getComponentLibrary,
   markProjectSaved,
+  replaceLibraryProject,
   replaceLoadedProject,
   restoreInitialProject,
   useCircuitStore,
 } from "./store/useCircuitStore";
 import "./styles.css";
 
-type BottomTab = "warnings" | "activity" | "code" | "assistant" | "arduino";
+type BottomTab = "warnings" | "activity" | "code" | "assistant" | "arduino" | "bom" | "docs" | "plugins";
+type WorkspaceTab = "circuit" | "code" | "simulation" | "serial";
 
 export default function App() {
   const project = useCircuitStore((state) => state.project);
   const dirty = useCircuitStore((state) => state.dirty);
   const filePath = useCircuitStore((state) => state.filePath);
+  const libraryProjectId = useCircuitStore((state) => state.libraryProjectId);
   const selection = useCircuitStore((state) => state.selection);
   const warnings = useCircuitStore((state) => state.warnings);
   const highlightedWarningId = useCircuitStore((state) => state.highlightedWarningId);
@@ -83,17 +96,24 @@ export default function App() {
   const historyFuture = useCircuitStore((state) => state.historyFuture);
   const setHighlightedWarning = useCircuitStore((state) => state.setHighlightedWarning);
   const updateMetadata = useCircuitStore((state) => state.updateMetadata);
+  const updateCode = useCircuitStore((state) => state.updateCode);
+  const updateSimulation = useCircuitStore((state) => state.updateSimulation);
 
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [bottomPanelOpen, setBottomPanelOpen] = useState(true);
   const [bottomTab, setBottomTab] = useState<BottomTab>("warnings");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("circuit");
   const [dashboardOpen, setDashboardOpen] = useState(true);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recentProjects, setRecentProjects] = useState<RecentProjectEntry[]>([]);
+  const [recentLibraryProjects, setRecentLibraryProjects] = useState<ProjectLibraryEntry[]>([]);
+  const [allLibraryProjects, setAllLibraryProjects] = useState<ProjectLibraryEntry[]>([]);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryDirectory, setLibraryDirectory] = useState("");
   const [activityLog, setActivityLog] = useState<string[]>(["Application started."]);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -104,12 +124,23 @@ export default function App() {
   const [selectedPort, setSelectedPort] = useState("");
   const [arduinoOutput, setArduinoOutput] = useState("Arduino CLI output will appear here.");
   const [serialOutput, setSerialOutput] = useState("Serial monitor is idle.");
+  const [pluginRuntime, setPluginRuntime] = useState<PluginRuntimeState>({
+    pluginDirectory: "",
+    loadedAt: new Date(0).toISOString(),
+    loaded: [],
+    failures: [],
+  });
+  const [simulationState, setSimulationState] = useState<SimulationState>(() => createInitialSimulationState(createEmptyProject()));
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") {
       return "light";
     }
     return window.localStorage.getItem("arduino-theme") === "dark" ? "dark" : "light";
   });
+  const componentLibrary = getComponentLibrary();
+  const catalogByType = getCatalogByType();
+  const boardCatalog = getBoardCatalog();
+  const boardByType = getBoardByType();
 
   const selectedComponent = selection?.type === "component"
     ? project.components.find((component) => component.id === selection.id) ?? null
@@ -120,7 +151,17 @@ export default function App() {
   const warningLookup = warnings.find((warning) => warning.id === highlightedWarningId) ?? null;
   const generatedSketch = useMemo(() => generateArduinoSketch(project), [project]);
   const assistantFindings = useMemo(() => analyzeCircuitProject(project), [project]);
+  const bomItems = useMemo(() => generateBom(project), [project]);
+  const documentation = useMemo(() => buildProjectDocumentation(project, warnings, generatedSketch.code), [generatedSketch.code, project, warnings]);
   const currentBoard = boardByType[project.metadata.boardType] ?? boardCatalog[0];
+  const activeCode = project.code.sketch || project.code.generatedSketch || generatedSketch.code;
+  const simulationPinHighlights = useMemo(
+    () => [
+      ...Object.entries(simulationState.digitalPins).filter(([, value]) => value > 0).map(([pin]) => pin),
+      ...Object.entries(simulationState.analogPins).filter(([, value]) => value > 0).map(([pin]) => pin),
+    ],
+    [simulationState.analogPins, simulationState.digitalPins],
+  );
 
   const componentConnections = useMemo(() => {
     if (!selectedComponent) {
@@ -152,12 +193,28 @@ export default function App() {
     setActivityLog((current) => [`${new Date().toLocaleTimeString()}: ${message}`, ...current].slice(0, 24));
   };
 
+  async function refreshRecentProjects() {
+    setRecentProjects(await getRecentProjects());
+  }
+
+  const refreshLibraryListing = useCallback(async (search = librarySearch) => {
+    const listing = await getLibraryProjects(search);
+    setRecentLibraryProjects(listing.recentProjects);
+    setAllLibraryProjects(listing.allProjects);
+    setLibraryDirectory(listing.projectDirectory);
+  }, [librarySearch]);
+
   useEffect(() => {
     const autosave = async () => {
-      await setAutosave(serializeProject(project));
+      const projectJson = serializeProject(project);
+      await setAutosave(projectJson);
+      if (libraryProjectId && window.desktop?.autosaveLibraryProject) {
+        await window.desktop.autosaveLibraryProject({ projectId: libraryProjectId, projectJson });
+        await refreshLibraryListing();
+      }
     };
     void autosave();
-  }, [project]);
+  }, [libraryProjectId, project, refreshLibraryListing]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -174,13 +231,25 @@ export default function App() {
     const restore = async () => {
       setLoading(true);
       try {
-        const [backup, recents, cliConfig] = await Promise.all([
+        const [backup, recents, cliConfig, runtimePlugins, libraryListing] = await Promise.all([
           getAutosave(),
           getRecentProjects(),
           window.desktop?.getArduinoConfig?.() ?? Promise.resolve({ cliPath: null, serialBaudRate: 9600 }),
+          window.desktop?.getPluginRuntime?.() ?? Promise.resolve({
+            pluginDirectory: "",
+            loadedAt: new Date(0).toISOString(),
+            loaded: [],
+            failures: [],
+          }),
+          getLibraryProjects(),
         ]);
         setRecentProjects(recents);
+        setRecentLibraryProjects(libraryListing.recentProjects);
+        setAllLibraryProjects(libraryListing.allProjects);
+        setLibraryDirectory(libraryListing.projectDirectory);
         setArduinoConfig(cliConfig);
+        setRuntimePluginState(runtimePlugins);
+        setPluginRuntime(runtimePlugins);
         if (backup) {
           try {
             const restored = parseProjectJson(backup);
@@ -219,6 +288,36 @@ export default function App() {
       void refreshArduinoEnvironment();
     }
   }, [loading]);
+
+  useEffect(() => {
+    if (project.code.generatedSketch !== generatedSketch.code) {
+      updateCode({
+        generatedSketch: generatedSketch.code,
+      });
+    }
+  }, [generatedSketch.code, project.code.generatedSketch, updateCode]);
+
+  const resetSimulationState = useEffectEvent(() => {
+    setSimulationState(createInitialSimulationState(project));
+  });
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      resetSimulationState();
+    });
+  }, [project.code.detectedPins, project.code.generatedSketch, project.code.sketch, project.components, project.connections]);
+
+  useEffect(() => {
+    if (!simulationState.running) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setSimulationState((current) => stepSimulation(project, current));
+    }, Math.max(50, 500 / Math.max(project.simulation.speed, 0.25)));
+
+    return () => window.clearInterval(timer);
+  }, [project, simulationState.running]);
 
   const handleKeyboardShortcut = useEffectEvent(async (event: KeyboardEvent) => {
     const isMeta = event.ctrlKey || event.metaKey;
@@ -285,10 +384,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  async function refreshRecentProjects() {
-    setRecentProjects(await getRecentProjects());
-  }
-
   async function refreshArduinoEnvironment() {
     if (!window.desktop) {
       return;
@@ -320,7 +415,7 @@ export default function App() {
     if (!allow) {
       return;
     }
-    setProject(createEmptyProject(), { filePath: null, dirty: false, resetHistory: true });
+    setProject(createEmptyProject(), { filePath: null, libraryProjectId: null, dirty: false, resetHistory: true });
     setDashboardOpen(true);
     setFeedback("Started a new circuit.");
     addActivity("Started a new circuit.");
@@ -382,18 +477,65 @@ export default function App() {
     await refreshRecentProjects();
   }
 
+  async function handleOpenLibraryProject(projectId: string) {
+    const allow = await maybeDiscardChanges();
+    if (!allow || !window.desktop?.openLibraryProject) {
+      return;
+    }
+
+    try {
+      const result = await window.desktop.openLibraryProject(projectId);
+      replaceLibraryProject(result.project, result.entry.id, result.entry.filePath, false);
+      setDashboardOpen(false);
+      setFeedback(`Opened library project ${result.entry.name}.`);
+      addActivity(`Opened library project ${result.entry.name}.`);
+      await refreshLibraryListing();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not open library project.";
+      setFeedback(message);
+      addActivity(message);
+      await refreshLibraryListing();
+    }
+  }
+
+  async function handleSaveToLibrary() {
+    if (!window.desktop?.saveLibraryProject) {
+      setFeedback("Library save is only available in the desktop app.");
+      return;
+    }
+
+    const result = await window.desktop.saveLibraryProject({
+      projectJson: serializeProject(project),
+      projectId: libraryProjectId,
+    });
+    markProjectSaved(result.project, result.entry.filePath, result.entry.id);
+    setFeedback(`Saved ${result.entry.name} to the app library.`);
+    addActivity(`Saved ${result.entry.name} to the app library.`);
+    await refreshLibraryListing();
+  }
+
   async function handleSave() {
     const projectJson = serializeProject(project);
     const defaultName = project.metadata.name.trim() || "arduino-circuit";
 
+    if (window.desktop && libraryProjectId) {
+      await handleSaveToLibrary();
+      return;
+    }
+
     if (window.desktop && filePath) {
       const result = await window.desktop.saveCircuit({ filePath, projectJson });
       if (!result.canceled) {
-        markProjectSaved(project, result.filePath ?? filePath);
+        markProjectSaved(project, result.filePath ?? filePath, null);
         setFeedback("Saved project.");
         addActivity(`Saved project to ${result.filePath?.split(/[\\/]/).pop() ?? filePath?.split(/[\\/]/).pop() ?? ""}.`);
         await refreshRecentProjects();
       }
+      return;
+    }
+
+    if (window.desktop) {
+      await handleSaveToLibrary();
       return;
     }
 
@@ -407,7 +549,7 @@ export default function App() {
     if (window.desktop) {
       const result = await window.desktop.saveCircuitAs({ defaultName: baseName, projectJson });
       if (!result.canceled) {
-        markProjectSaved(project, result.filePath ?? null);
+        markProjectSaved(project, result.filePath ?? null, null);
         setFeedback("Saved project as .avc.");
         addActivity(`Saved project as ${result.filePath?.split(/[\\/]/).pop() ?? `${baseName}.avc`}.`);
         await refreshRecentProjects();
@@ -416,7 +558,7 @@ export default function App() {
     }
 
     downloadJson(baseName, projectJson);
-    markProjectSaved(project, null);
+    markProjectSaved(project, null, null);
     setFeedback("Downloaded project as .avc.");
     addActivity("Downloaded project as .avc.");
   }
@@ -458,6 +600,27 @@ export default function App() {
     }
   }
 
+  async function handleImportIntoLibrary() {
+    if (!window.desktop?.importProjectIntoLibrary) {
+      return;
+    }
+    try {
+      const result = await window.desktop.importProjectIntoLibrary();
+      if (result.canceled || !result.entry || !result.project) {
+        return;
+      }
+      replaceLibraryProject(result.project, result.entry.id, result.entry.filePath, false);
+      setDashboardOpen(false);
+      setFeedback(`Imported ${result.entry.name} into the app library.`);
+      addActivity(`Imported ${result.entry.name} into the app library.`);
+      await refreshLibraryListing();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to import project into library.";
+      setFeedback(message);
+      addActivity(message);
+    }
+  }
+
   function handleImportFromText() {
     try {
       const imported = parseProjectJson(importText);
@@ -483,6 +646,73 @@ export default function App() {
     addActivity(`Started template: ${template.name}.`);
   }
 
+  async function handleRenameLibraryEntry(entry: ProjectLibraryEntry) {
+    const nextName = window.prompt("Rename project", entry.name)?.trim();
+    if (!nextName || !window.desktop?.renameLibraryProject) {
+      return;
+    }
+    const result = await window.desktop.renameLibraryProject({ projectId: entry.id, name: nextName });
+    if (libraryProjectId === entry.id) {
+      markProjectSaved(result.project, result.entry.filePath, result.entry.id);
+    }
+    setFeedback(`Renamed library project to ${result.entry.name}.`);
+    addActivity(`Renamed library project to ${result.entry.name}.`);
+    await refreshLibraryListing();
+  }
+
+  async function handleDuplicateLibraryEntry(entry: ProjectLibraryEntry) {
+    if (!window.desktop?.duplicateLibraryProject) {
+      return;
+    }
+    const result = await window.desktop.duplicateLibraryProject(entry.id);
+    setFeedback(`Duplicated ${entry.name} as ${result.entry.name}.`);
+    addActivity(`Duplicated ${entry.name} as ${result.entry.name}.`);
+    await refreshLibraryListing();
+  }
+
+  async function handleDeleteLibraryEntry(entry: ProjectLibraryEntry) {
+    const confirmed = await confirmAction(
+      "Delete Project",
+      `Delete ${entry.name} from the app library? The project file will be moved to trash if possible.`,
+      "Delete Project",
+    );
+    if (!confirmed || !window.desktop?.deleteLibraryProject) {
+      return;
+    }
+    await window.desktop.deleteLibraryProject(entry.id);
+    if (libraryProjectId === entry.id) {
+      restoreInitialProject(createEmptyProject(), null, false, null);
+      setDashboardOpen(true);
+    }
+    setFeedback(`Deleted ${entry.name} from the app library.`);
+    addActivity(`Deleted ${entry.name} from the app library.`);
+    await refreshLibraryListing();
+  }
+
+  async function handleRemoveLibraryEntry(entry: ProjectLibraryEntry) {
+    const confirmed = await confirmAction(
+      "Remove Library Entry",
+      `Remove unavailable library entry ${entry.name} from the index?`,
+      "Remove Entry",
+    );
+    if (!confirmed || !window.desktop?.removeLibraryEntry) {
+      return;
+    }
+    await window.desktop.removeLibraryEntry(entry.id);
+    setFeedback(`Removed ${entry.name} from the library index.`);
+    addActivity(`Removed ${entry.name} from the library index.`);
+    await refreshLibraryListing();
+  }
+
+  async function handleRevealLibraryEntry(entry: ProjectLibraryEntry) {
+    if (!window.desktop?.revealLibraryProject) {
+      return;
+    }
+    await window.desktop.revealLibraryProject(entry.id);
+    setFeedback(`Revealed ${entry.name} in its folder.`);
+    addActivity(`Revealed ${entry.name} in its folder.`);
+  }
+
   async function handleCopyGeneratedCode() {
     try {
       await navigator.clipboard.writeText(generatedSketch.code);
@@ -495,12 +725,13 @@ export default function App() {
   }
 
   async function handleSaveGeneratedCode() {
-    const defaultName = generatedSketch.fileName.replace(/\.ino$/i, "");
+    const defaultName = (project.code.fileName || generatedSketch.fileName).replace(/\.ino$/i, "");
+    const sketchCode = activeCode;
 
     if (window.desktop) {
       const result = await window.desktop.exportSketch({
         defaultName,
-        sketchCode: generatedSketch.code,
+        sketchCode,
       });
       if (!result.canceled) {
         setFeedback("Saved Arduino sketch as .ino.");
@@ -509,9 +740,131 @@ export default function App() {
       return;
     }
 
-    downloadTextFile(defaultName, generatedSketch.code, "ino", "text/plain");
+    downloadTextFile(defaultName, sketchCode, "ino", "text/plain");
     setFeedback("Downloaded Arduino sketch as .ino.");
     addActivity("Downloaded Arduino sketch as .ino.");
+  }
+
+  function handleGenerateCodeIntoEditor() {
+    updateCode({
+      sketch: generatedSketch.code,
+      generatedSketch: generatedSketch.code,
+      source: "generated",
+      fileName: generatedSketch.fileName,
+    });
+    setWorkspaceTab("code");
+    setFeedback("Generated code was copied into the code editor.");
+    addActivity("Generated circuit code into the editor.");
+  }
+
+  async function handleImportCode() {
+    try {
+      const result = window.desktop?.importCode
+        ? await window.desktop.importCode()
+        : null;
+      if (!result || result.canceled || !result.content || !result.fileName) {
+        return;
+      }
+      const imported = importCodeContent(result.content, result.fileName);
+      updateCode({
+        sketch: imported.code,
+        source: "imported",
+        fileName: imported.fileName,
+        detectedPins: imported.detectedPins,
+      });
+      setWorkspaceTab("code");
+      setFeedback(`Imported ${imported.fileName}.`);
+      addActivity(`Imported Arduino code from ${imported.fileName}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to import code.";
+      setFeedback(message);
+      addActivity(message);
+    }
+  }
+
+  function handleEditorChange(value: string | undefined) {
+    const code = value ?? "";
+    updateCode({
+      sketch: code,
+      source: project.code.source === "generated" && code === generatedSketch.code ? "generated" : "manual",
+      detectedPins: detectPinsFromCode(code),
+    });
+  }
+
+  function handleSimulationStart() {
+    setSimulationState((current) => ({ ...current, running: true }));
+    setWorkspaceTab("simulation");
+  }
+
+  function handleSimulationPause() {
+    setSimulationState((current) => ({ ...current, running: false }));
+  }
+
+  function handleSimulationStop() {
+    setSimulationState(createInitialSimulationState(project));
+  }
+
+  function handleSimulationStep() {
+    setSimulationState((current) => stepSimulation(project, { ...current, running: false }));
+    setWorkspaceTab("simulation");
+  }
+
+  function handleSimulationReset() {
+    setSimulationState(createInitialSimulationState(project));
+  }
+
+  async function handleReloadPlugins() {
+    if (!window.desktop?.reloadPluginRuntime) {
+      setFeedback("Runtime plugin loading is only available in the desktop app.");
+      return;
+    }
+    const runtime = await window.desktop.reloadPluginRuntime();
+    setRuntimePluginState(runtime);
+    setPluginRuntime(runtime);
+    setProject(project, { filePath, dirty, resetHistory: false });
+    setBottomTab("plugins");
+    setBottomPanelOpen(true);
+    setFeedback(`Reloaded plugins. ${runtime.loaded.length} loaded, ${runtime.failures.length} failed.`);
+    addActivity(`Reloaded runtime plugins from ${runtime.pluginDirectory || "plugin directory"}.`);
+  }
+
+  async function handleExportBom(format: "csv" | "md") {
+    const baseName = `${project.metadata.name.trim() || "arduino-circuit"}-bom`;
+    const content = format === "csv" ? bomToCsv(bomItems) : bomToMarkdown(bomItems);
+    await exportTextFile(
+      baseName,
+      format,
+      format === "csv" ? "Export Bill Of Materials CSV" : "Export Bill Of Materials Markdown",
+      content,
+      format === "csv" ? "CSV" : "Markdown",
+    );
+    setBottomTab("bom");
+    setBottomPanelOpen(true);
+    setFeedback(`Exported BOM as ${format.toUpperCase()}.`);
+    addActivity(`Exported bill of materials as ${format.toUpperCase()}.`);
+  }
+
+  async function handleExportDocumentation(format: "md" | "html" | "pdf") {
+    const baseName = `${project.metadata.name.trim() || "arduino-circuit"}-documentation`;
+    const markdown = documentationToMarkdown(documentation);
+    const html = documentationToHtml(documentation);
+
+    if (format === "pdf") {
+      await exportPdfFile(baseName, "Export Project Documentation PDF", html);
+    } else {
+      await exportTextFile(
+        baseName,
+        format,
+        format === "md" ? "Export Project Documentation Markdown" : "Export Project Documentation HTML",
+        format === "md" ? markdown : html,
+        format === "md" ? "Markdown" : "HTML",
+      );
+    }
+
+    setBottomTab("docs");
+    setBottomPanelOpen(true);
+    setFeedback(`Exported project documentation as ${format.toUpperCase()}.`);
+    addActivity(`Exported project documentation as ${format.toUpperCase()}.`);
   }
 
   async function handleAnalyzeCircuit() {
@@ -617,7 +970,7 @@ export default function App() {
             <h1>Arduino Circuit Visualizer</h1>
             <p>
               {dirty ? "Unsaved changes" : "All changes saved"}
-              {filePath ? ` | ${filePath.split(/[\\/]/).pop()}` : " | Desktop workspace"}
+              {libraryProjectId ? ` | App Library | ${project.metadata.name}` : filePath ? ` | ${filePath.split(/[\\/]/).pop()}` : " | Desktop workspace"}
               {currentBoard ? ` | ${currentBoard.name}` : ""}
             </p>
           </div>
@@ -627,6 +980,7 @@ export default function App() {
           <ToolbarButton icon={<FileInput size={16} />} label="New" onClick={handleNewProject} title="New project" />
           <ToolbarButton icon={<FolderOpen size={16} />} label="Open" onClick={handleOpen} title="Open .avc or JSON project" />
           <ToolbarButton icon={<Save size={16} />} label="Save" onClick={() => void handleSave()} title="Save (Ctrl/Cmd+S)" />
+          <ToolbarButton icon={<Library size={16} />} label="Save Library" onClick={() => void handleSaveToLibrary()} title="Save to app library" />
           <ToolbarButton icon={<SaveAll size={16} />} label="Save As" onClick={() => void handleSaveAs()} title="Save As (Ctrl/Cmd+Shift+S)" />
           <ToolbarButton icon={<Download size={16} />} label="Export" onClick={() => void handleExport()} title="Export compatibility JSON (Ctrl/Cmd+E)" />
           <ToolbarButton icon={<Import size={16} />} label="Import" onClick={() => setImportModalOpen(true)} title="Import JSON or .avc" />
@@ -640,6 +994,9 @@ export default function App() {
             }}
             title="Generate Arduino starter code (Ctrl/Cmd+G)"
           />
+          <ToolbarButton icon={<Boxes size={16} />} label="BOM" onClick={() => { setBottomTab("bom"); setBottomPanelOpen(true); }} title="View bill of materials" />
+          <ToolbarButton icon={<FileCode2 size={16} />} label="Docs" onClick={() => { setBottomTab("docs"); setBottomPanelOpen(true); }} title="View project documentation exports" />
+          <ToolbarButton icon={<Library size={16} />} label="Plugins" onClick={() => { setBottomTab("plugins"); setBottomPanelOpen(true); }} title="View runtime plugins" />
           <ToolbarButton icon={<AlertTriangle size={16} />} label="Analyze Circuit" onClick={() => void handleAnalyzeCircuit()} title="Analyze circuit" />
           <ToolbarButton icon={<RotateCcw size={16} />} label="Undo" onClick={undo} disabled={historyPast.length === 0} title="Undo (Ctrl/Cmd+Z)" />
           <ToolbarButton icon={<RotateCw size={16} />} label="Redo" onClick={redo} disabled={historyFuture.length === 0} title="Redo (Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y)" />
@@ -753,15 +1110,262 @@ export default function App() {
               </div>
             )}
 
+            <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
+              {[
+                { id: "circuit", label: "Circuit", icon: <LayoutGrid size={14} /> },
+                { id: "code", label: "Code", icon: <CodeXml size={14} /> },
+                { id: "simulation", label: "Simulation", icon: <Play size={14} /> },
+                { id: "serial", label: "Serial Monitor", icon: <Usb size={14} /> },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={workspaceTab === tab.id}
+                  className={workspaceTab === tab.id ? "workspace-tab tab-active" : "workspace-tab"}
+                  onClick={() => setWorkspaceTab(tab.id as WorkspaceTab)}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="canvas-area">
-              <CircuitCanvas />
-              {!project.components.length && !dashboardOpen && (
-                <div className="empty-state">
-                  <div>
-                    <Sparkles size={22} />
-                    <h3>Build from a template or start wiring visually</h3>
-                    <p>Drag components from the library, open the dashboard, or generate starter Arduino code from your current design.</p>
+              {workspaceTab === "circuit" && (
+                <>
+                  <CircuitCanvas
+                    simulationOverlay={{
+                      activeConnectionIds: simulationState.activeConnections,
+                      activePins: simulationPinHighlights,
+                      componentStates: simulationState.componentStates,
+                    }}
+                  />
+                  {!project.components.length && !dashboardOpen && (
+                    <div className="empty-state">
+                      <div>
+                        <Sparkles size={22} />
+                        <h3>Build from a template or start wiring visually</h3>
+                        <p>Drag components from the library, open the dashboard, or generate starter Arduino code from your current design.</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {workspaceTab === "code" && (
+                <div className="workspace-panel">
+                  <div className="workspace-toolbar">
+                    <button type="button" className="primary-button" onClick={handleGenerateCodeIntoEditor}>
+                      <CodeXml size={14} /> Generate Code From Circuit
+                    </button>
+                    <button type="button" onClick={() => void handleImportCode()}>
+                      <Import size={14} /> Import .ino / .cpp / .h
+                    </button>
+                    <button type="button" onClick={() => void handleSaveGeneratedCode()}>
+                      <Save size={14} /> Export .ino
+                    </button>
                   </div>
+                  <div className="workspace-split">
+                    <div className="editor-shell">
+                      <div className="workspace-card-header">
+                        <div>
+                          <strong>{project.code.fileName || generatedSketch.fileName}</strong>
+                          <small>{project.code.source === "generated" ? "Generated starter sketch" : project.code.source === "imported" ? "Imported sketch" : "Manual sketch"}</small>
+                        </div>
+                        <span className="status-pill">{dirty ? "Unsaved changes" : "Saved"}</span>
+                      </div>
+                      <Editor
+                        height="100%"
+                        defaultLanguage="cpp"
+                        language="cpp"
+                        theme={theme === "dark" ? "vs-dark" : "vs"}
+                        value={activeCode}
+                        onChange={handleEditorChange}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          roundedSelection: true,
+                          scrollBeyondLastLine: false,
+                          wordWrap: "on",
+                          automaticLayout: true,
+                        }}
+                      />
+                    </div>
+                    <aside className="workspace-sidecard">
+                      <div className="workspace-card-header">
+                        <div>
+                          <strong>Detected Pins</strong>
+                          <small>Safe heuristic parsing from your Arduino code.</small>
+                        </div>
+                      </div>
+                      <div className="workspace-chip-list">
+                        {project.code.detectedPins.length === 0 ? (
+                          <div className="professional-empty">No pins detected yet. Import code or write `pinMode`, `digitalWrite`, `analogRead`, or `Servo.attach` calls.</div>
+                        ) : (
+                          project.code.detectedPins.map((pin) => (
+                            <span key={pin} className="status-pill">{pin}</span>
+                          ))
+                        )}
+                      </div>
+                      <div className="workspace-note">
+                        Generated code is a starter template and may require manual refinement.
+                      </div>
+                    </aside>
+                  </div>
+                </div>
+              )}
+
+              {workspaceTab === "simulation" && (
+                <div className="workspace-panel simulation-workspace">
+                  <div className="workspace-toolbar">
+                    <button type="button" className="primary-button" onClick={handleSimulationStart}>
+                      <Play size={14} /> Start
+                    </button>
+                    <button type="button" onClick={handleSimulationPause}>
+                      <Square size={14} /> Pause
+                    </button>
+                    <button type="button" onClick={handleSimulationStep}>
+                      <RotateCw size={14} /> Step
+                    </button>
+                    <button type="button" onClick={handleSimulationReset}>
+                      <RotateCcw size={14} /> Reset
+                    </button>
+                    <button type="button" onClick={handleSimulationStop}>
+                      <Trash2 size={14} /> Stop
+                    </button>
+                  </div>
+                  <div className="workspace-split">
+                    <div className="simulation-canvas-card">
+                      <CircuitCanvas
+                        simulationOverlay={{
+                          activeConnectionIds: simulationState.activeConnections,
+                          activePins: simulationPinHighlights,
+                          componentStates: simulationState.componentStates,
+                        }}
+                      />
+                    </div>
+                    <aside className="workspace-sidecard">
+                      <div className="workspace-card-header">
+                        <div>
+                          <strong>Simulation Controls</strong>
+                          <small>Educational Arduino logic subset only.</small>
+                        </div>
+                        <span className="status-pill">{simulationState.running ? "Running" : "Paused"}</span>
+                      </div>
+                      <label className="slider-field">
+                        <span>Speed</span>
+                        <input
+                          type="range"
+                          min="0.25"
+                          max="4"
+                          step="0.25"
+                          value={project.simulation.speed}
+                          onChange={(event) => updateSimulation({ speed: Number(event.target.value) })}
+                        />
+                        <strong>{project.simulation.speed.toFixed(2)}x</strong>
+                      </label>
+
+                      {project.components.filter((component) => component.type === "push-button").map((component) => (
+                        <label key={component.id} className="control-field">
+                          <span>{component.name}</span>
+                          <input
+                            type="checkbox"
+                            checked={project.simulation.buttonStates[component.id] ?? false}
+                            onChange={(event) => updateSimulation({
+                              buttonStates: {
+                                ...project.simulation.buttonStates,
+                                [component.id]: event.target.checked,
+                              },
+                            })}
+                          />
+                        </label>
+                      ))}
+
+                      {project.components.filter((component) => component.type === "potentiometer").map((component) => (
+                        <label key={component.id} className="slider-field">
+                          <span>{component.name}</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1023"
+                            step="1"
+                            value={project.simulation.potentiometerValues[component.id] ?? 512}
+                            onChange={(event) => updateSimulation({
+                              potentiometerValues: {
+                                ...project.simulation.potentiometerValues,
+                                [component.id]: Number(event.target.value),
+                              },
+                            })}
+                          />
+                          <strong>{project.simulation.potentiometerValues[component.id] ?? 512}</strong>
+                        </label>
+                      ))}
+
+                      {project.components.filter((component) => component.type === "ultrasonic-sensor").map((component) => (
+                        <label key={component.id} className="slider-field">
+                          <span>{component.name}</span>
+                          <input
+                            type="range"
+                            min="2"
+                            max="400"
+                            step="1"
+                            value={project.simulation.ultrasonicDistances[component.id] ?? 30}
+                            onChange={(event) => updateSimulation({
+                              ultrasonicDistances: {
+                                ...project.simulation.ultrasonicDistances,
+                                [component.id]: Number(event.target.value),
+                              },
+                            })}
+                          />
+                          <strong>{project.simulation.ultrasonicDistances[component.id] ?? 30} cm</strong>
+                        </label>
+                      ))}
+
+                      <div className="workspace-note">
+                        Simulation supports a beginner Arduino subset. This code can still be compiled/uploaded, but simulation may be incomplete.
+                      </div>
+                      <div className="workspace-card-header">
+                        <div>
+                          <strong>Pin State Snapshot</strong>
+                          <small>{simulationState.millis.toFixed(0)} ms elapsed</small>
+                        </div>
+                      </div>
+                      <div className="workspace-chip-list">
+                        {Object.entries(simulationState.digitalPins).map(([pin, value]) => (
+                          <span key={pin} className="status-pill">{pin}: {value ? "HIGH" : "LOW"}</span>
+                        ))}
+                        {Object.entries(simulationState.analogPins).map(([pin, value]) => (
+                          <span key={pin} className="status-pill">{pin}: {value}</span>
+                        ))}
+                        {Object.keys(simulationState.digitalPins).length === 0 && Object.keys(simulationState.analogPins).length === 0 && (
+                          <div className="professional-empty">No simulated pin states yet. Generate or import Arduino code, then start the simulator.</div>
+                        )}
+                      </div>
+                      {simulationState.warnings.length > 0 && (
+                        <div className="table-stack">
+                          {simulationState.warnings.map((warning, index) => (
+                            <div key={`${warning}-${index}`} className="output-warning severity-warning">
+                              <strong>Simulation note</strong>
+                              <span>{warning}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </aside>
+                  </div>
+                </div>
+              )}
+
+              {workspaceTab === "serial" && (
+                <div className="workspace-panel">
+                  <div className="workspace-card-header">
+                    <div>
+                      <strong>Simulated Serial Monitor</strong>
+                      <small>Serial output from the beginner-friendly simulator. Real hardware serial output stays in the Arduino panel.</small>
+                    </div>
+                  </div>
+                  <pre className="code-output"><code>{simulationState.serial.join("") || "Serial monitor is idle."}</code></pre>
                 </div>
               )}
             </div>
@@ -916,6 +1520,9 @@ export default function App() {
                 <button type="button" className={bottomTab === "assistant" ? "tab-active" : ""} onClick={() => setBottomTab("assistant")}>Analyze Circuit</button>
                 <button type="button" className={bottomTab === "activity" ? "tab-active" : ""} onClick={() => setBottomTab("activity")}>Activity</button>
                 <button type="button" className={bottomTab === "code" ? "tab-active" : ""} onClick={() => setBottomTab("code")}>Generated Code</button>
+                <button type="button" className={bottomTab === "bom" ? "tab-active" : ""} onClick={() => setBottomTab("bom")}>BOM</button>
+                <button type="button" className={bottomTab === "docs" ? "tab-active" : ""} onClick={() => setBottomTab("docs")}>Docs</button>
+                <button type="button" className={bottomTab === "plugins" ? "tab-active" : ""} onClick={() => setBottomTab("plugins")}>Plugins</button>
                 <button type="button" className={bottomTab === "arduino" ? "tab-active" : ""} onClick={() => setBottomTab("arduino")}>Arduino CLI</button>
               </div>
             </div>
@@ -982,6 +1589,80 @@ export default function App() {
               </div>
             )}
 
+            {bottomTab === "bom" && (
+              <div className="bottom-panel-body">
+                <div className="arduino-toolbar">
+                  <button type="button" onClick={() => void handleExportBom("csv")}><Download size={14} /> Export CSV</button>
+                  <button type="button" onClick={() => void handleExportBom("md")}><Download size={14} /> Export Markdown</button>
+                </div>
+                {bomItems.length === 0 ? (
+                  <div className="professional-empty">No components yet. Add parts to generate a bill of materials.</div>
+                ) : (
+                  <div className="table-stack">
+                    {bomItems.map((item) => (
+                      <div key={item.key} className="inspector-chip-row">
+                        <strong>{item.name}</strong>
+                        <span>{item.category}</span>
+                        <span>Qty: {item.quantity}</span>
+                        <span>{item.references.join(", ")}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {bottomTab === "docs" && (
+              <div className="bottom-panel-body">
+                <div className="arduino-toolbar">
+                  <button type="button" onClick={() => void handleExportDocumentation("md")}><Download size={14} /> Export Markdown</button>
+                  <button type="button" onClick={() => void handleExportDocumentation("html")}><Download size={14} /> Export HTML</button>
+                  <button type="button" onClick={() => void handleExportDocumentation("pdf")}><Download size={14} /> Export PDF</button>
+                </div>
+                <div className="codegen-summary">
+                  <span className="status-pill">Components: {documentation.components.length}</span>
+                  <span className="status-pill">Connections: {documentation.connections.length}</span>
+                  <span className="status-pill">Warnings: {documentation.warnings.length}</span>
+                  <span className="status-pill">BOM Items: {documentation.bom.length}</span>
+                </div>
+                <pre className="code-output compact-code"><code>{documentationToMarkdown(documentation)}</code></pre>
+              </div>
+            )}
+
+            {bottomTab === "plugins" && (
+              <div className="bottom-panel-body">
+                <div className="arduino-toolbar">
+                  <button type="button" onClick={() => void handleReloadPlugins()}><RotateCcw size={14} /> Reload Plugins</button>
+                </div>
+                <div className="arduino-grid">
+                  <div className="arduino-card">
+                    <strong>Plugin Directory</strong>
+                    <span>{pluginRuntime.pluginDirectory || "Desktop plugin runtime unavailable"}</span>
+                  </div>
+                  <div className="arduino-card">
+                    <strong>Status</strong>
+                    <span>{pluginRuntime.loaded.length} loaded | {pluginRuntime.failures.length} failed</span>
+                  </div>
+                </div>
+                {pluginRuntime.loaded.map((plugin) => (
+                  <div key={plugin.manifest.id} className="output-warning severity-info">
+                    <strong>{plugin.manifest.name} ({plugin.manifest.version})</strong>
+                    <span>{plugin.manifest.description || "No description provided."}</span>
+                    <span>Boards: {plugin.manifest.boards?.length ?? 0} | Components: {plugin.manifest.components?.length ?? 0} | Generators: {plugin.manifest.generators?.length ?? 0} | Validations: {plugin.manifest.validations?.length ?? 0}</span>
+                  </div>
+                ))}
+                {pluginRuntime.failures.map((failure) => (
+                  <div key={failure.filePath} className="output-warning severity-danger">
+                    <strong>{failure.filePath}</strong>
+                    <span>{failure.message}</span>
+                  </div>
+                ))}
+                {pluginRuntime.loaded.length === 0 && pluginRuntime.failures.length === 0 && (
+                  <div className="professional-empty">No runtime plugins detected yet.</div>
+                )}
+              </div>
+            )}
+
             {bottomTab === "arduino" && (
               <div className="bottom-panel-body">
                 <div className="arduino-toolbar">
@@ -1029,10 +1710,92 @@ export default function App() {
                 <button type="button" className="primary-button" onClick={() => { void handleNewProject(); setDashboardOpen(false); }}>
                   <FileInput size={14} /> Blank Project
                 </button>
+                <button type="button" onClick={() => void handleSaveToLibrary()}>
+                  <Library size={14} /> Save Current To Library
+                </button>
+                <button type="button" onClick={() => void handleImportIntoLibrary()}>
+                  <Import size={14} /> Import Existing .avc
+                </button>
                 <button type="button" onClick={() => void handleOpen()}>
-                  <FolderOpen size={14} /> Open Project
+                  <FolderOpen size={14} /> Open External File
                 </button>
               </div>
+              <small>Library storage: {libraryDirectory || "Desktop-only feature"}</small>
+            </section>
+
+            <section className="dashboard-card">
+              <div className="panel-title">
+                <FolderOpen size={16} />
+                <h2>Recent Projects</h2>
+              </div>
+              {recentLibraryProjects.length === 0 ? (
+                <div className="professional-empty">No recent library projects yet.</div>
+              ) : (
+                <div className="recent-list">
+                  {recentLibraryProjects.map((entry) => (
+                    <div key={entry.id} className="recent-card">
+                      <button type="button" className="template-card" onClick={() => void handleOpenLibraryProject(entry.id)}>
+                        <strong>{entry.name}</strong>
+                        <small>{entry.description || "No description"}</small>
+                        <span>{entry.boardType} | {entry.lastOpenedAt ? new Date(entry.lastOpenedAt).toLocaleString() : "Never opened"}</span>
+                      </button>
+                      <div className="dashboard-actions">
+                        <button type="button" onClick={() => void handleRenameLibraryEntry(entry)}><Save size={14} /> Rename</button>
+                        <button type="button" onClick={() => void handleDuplicateLibraryEntry(entry)}><Clipboard size={14} /> Duplicate</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="dashboard-card">
+              <div className="panel-title">
+                <Library size={16} />
+                <h2>All Projects</h2>
+              </div>
+              <input
+                value={librarySearch}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setLibrarySearch(nextValue);
+                  void refreshLibraryListing(nextValue);
+                }}
+                placeholder="Search by name, description, or board"
+              />
+              {allLibraryProjects.length === 0 ? (
+                <div className="professional-empty">No saved app-library projects match your search.</div>
+              ) : (
+                <div className="recent-list">
+                  {allLibraryProjects.map((entry) => (
+                    <div key={entry.id} className="recent-card">
+                      <button
+                        type="button"
+                        className="template-card"
+                        disabled={entry.status !== "available"}
+                        onClick={() => void handleOpenLibraryProject(entry.id)}
+                      >
+                        <strong>{entry.name}</strong>
+                        <small>{entry.description || "No description"}</small>
+                        <span>{entry.boardType} | {entry.status}</span>
+                        {entry.error && <span>{entry.error}</span>}
+                      </button>
+                      <div className="dashboard-actions">
+                        {entry.status === "available" ? (
+                          <>
+                            <button type="button" onClick={() => void handleRenameLibraryEntry(entry)}><Save size={14} /> Rename</button>
+                            <button type="button" onClick={() => void handleDuplicateLibraryEntry(entry)}><Clipboard size={14} /> Duplicate</button>
+                            <button type="button" onClick={() => void handleRevealLibraryEntry(entry)}><FolderOpen size={14} /> Reveal</button>
+                            <button type="button" onClick={() => void handleDeleteLibraryEntry(entry)}><Trash2 size={14} /> Delete</button>
+                          </>
+                        ) : (
+                          <button type="button" onClick={() => void handleRemoveLibraryEntry(entry)}><Trash2 size={14} /> Remove Entry</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="dashboard-card">
@@ -1054,10 +1817,10 @@ export default function App() {
             <section className="dashboard-card">
               <div className="panel-title">
                 <FolderOpen size={16} />
-                <h2>Open Recent</h2>
+                <h2>Recent External Files</h2>
               </div>
               {recentProjects.length === 0 ? (
-                <div className="professional-empty">No recent desktop projects recorded yet.</div>
+                <div className="professional-empty">No recent external files recorded yet.</div>
               ) : (
                 <div className="recent-list">
                   {recentProjects.map((entry) => (
@@ -1180,6 +1943,14 @@ export default function App() {
               >
                 <Save size={14} /> Save Arduino Settings
               </button>
+              <button type="button" onClick={() => void handleReloadPlugins()}>
+                <RotateCcw size={14} /> Reload Plugins
+              </button>
+            </div>
+            <div className="arduino-card">
+              <strong>Runtime Plugins</strong>
+              <span>{pluginRuntime.loaded.length} loaded | {pluginRuntime.failures.length} failed</span>
+              <small>{pluginRuntime.pluginDirectory || "Desktop plugin directory unavailable"}</small>
             </div>
           </div>
         </ModalShell>
@@ -1190,7 +1961,7 @@ export default function App() {
           <div className="about-copy">
             <p>Arduino Circuit Visualizer is a desktop-first Arduino design application for planning, teaching, documenting, and generating starter firmware from visual circuit graphs.</p>
             <p>Built with Electron, React, TypeScript, React Flow, Zustand, and Zod.</p>
-            <p>Current board support includes Arduino Uno and Arduino Nano, with architecture prepared for future ESP32, ESP8266, Raspberry Pi Pico, and STM32 board plugins.</p>
+            <p>Current built-in board support includes Arduino Uno, Arduino Nano, ESP32 DevKit V1, ESP8266 NodeMCU, and Raspberry Pi Pico, with runtime board plugins available through the plugin directory.</p>
             <p>Version 1.0.0</p>
           </div>
         </ModalShell>

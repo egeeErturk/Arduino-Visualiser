@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { catalogByType } from "./catalog.js";
+import { getCatalogByType } from "./plugins.js";
 import type {
   CircuitComponent,
   CircuitConnection,
@@ -55,6 +55,30 @@ export const circuitProjectSchema = z.object({
   }),
   components: z.array(componentSchema),
   connections: z.array(connectionSchema),
+  code: z.object({
+    sketch: z.string().optional().default(""),
+    generatedSketch: z.string().optional().default(""),
+    source: z.enum(["generated", "manual", "imported"]).optional().default("generated"),
+    fileName: z.string().optional().default("sketch.ino"),
+    detectedPins: z.array(z.string()).optional().default([]),
+  }).optional().default({
+    sketch: "",
+    generatedSketch: "",
+    source: "generated",
+    fileName: "sketch.ino",
+    detectedPins: [],
+  }),
+  simulation: z.object({
+    speed: z.number().positive().optional().default(1),
+    buttonStates: z.record(z.string(), z.boolean()).optional().default({}),
+    potentiometerValues: z.record(z.string(), z.number()).optional().default({}),
+    ultrasonicDistances: z.record(z.string(), z.number()).optional().default({}),
+  }).optional().default({
+    speed: 1,
+    buttonStates: {},
+    potentiometerValues: {},
+    ultrasonicDistances: {},
+  }),
 });
 
 export function createId(prefix: string) {
@@ -97,6 +121,19 @@ export function createEmptyProject(name = "Untitled Circuit"): CircuitProject {
     },
     components: [],
     connections: [],
+    code: {
+      sketch: "",
+      generatedSketch: "",
+      source: "generated",
+      fileName: "sketch.ino",
+      detectedPins: [],
+    },
+    simulation: {
+      speed: 1,
+      buttonStates: {},
+      potentiometerValues: {},
+      ultrasonicDistances: {},
+    },
   };
 }
 
@@ -116,7 +153,7 @@ export function normalizeImportedProject(project: CircuitProject): CircuitProjec
   const nextComponents: CircuitComponent[] = [];
 
   for (const component of project.components) {
-    const definition = catalogByType[component.type];
+    const definition = getCatalogByType()[component.type];
     if (!definition) {
       continue;
     }
@@ -188,5 +225,18 @@ export function normalizeImportedProject(project: CircuitProject): CircuitProjec
     metadata: normalizedMetadata,
     components: nextComponents,
     connections: nextConnections,
+    code: {
+      sketch: project.code?.sketch ?? "",
+      generatedSketch: project.code?.generatedSketch ?? "",
+      source: project.code?.source ?? "generated",
+      fileName: project.code?.fileName ?? "sketch.ino",
+      detectedPins: project.code?.detectedPins ?? [],
+    },
+    simulation: {
+      speed: project.simulation?.speed ?? 1,
+      buttonStates: project.simulation?.buttonStates ?? {},
+      potentiometerValues: project.simulation?.potentiometerValues ?? {},
+      ultrasonicDistances: project.simulation?.ultrasonicDistances ?? {},
+    },
   };
 }

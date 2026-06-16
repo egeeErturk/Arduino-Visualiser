@@ -3,13 +3,33 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promises as fs } from "node:fs";
 import { createArduinoService } from "./arduinoService.js";
-import type { ArduinoCliConfig, RecentProjectEntry } from "../shared/types.js";
+import { loadRuntimePlugins } from "./pluginRuntime.js";
+import {
+  autosaveLibraryProject,
+  deleteLibraryProject,
+  listLibraryProjects,
+  openLibraryProject,
+  promptImportProjectIntoLibrary,
+  removeLibraryEntry,
+  renameLibraryProject,
+  revealLibraryProject,
+  saveProjectToLibrary,
+  duplicateLibraryProject,
+} from "./projectLibrary.js";
+import { parseProjectJson } from "../shared/project.js";
+import type { ArduinoCliConfig, PluginRuntimeState, RecentProjectEntry } from "../shared/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let isDirty = false;
+let pluginRuntime: PluginRuntimeState = {
+  pluginDirectory: "",
+  loadedAt: new Date(0).toISOString(),
+  loaded: [],
+  failures: [],
+};
 
 async function readDesktopState(): Promise<{
   autosave: string | null;
@@ -138,6 +158,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  pluginRuntime = await loadRuntimePlugins();
   await createWindow();
 
   app.on("activate", async () => {
@@ -178,6 +199,25 @@ ipcMain.handle("dialog:open-recent-project", async (_event, payload: { filePath:
     return { canceled: true, error: error instanceof Error ? error.message : "Could not open recent project." };
   }
 });
+
+ipcMain.handle("library:list-projects", async (_event, payload?: { search?: string }) => listLibraryProjects(payload?.search ?? ""));
+ipcMain.handle("library:save-project", async (_event, payload: { projectJson: string; projectId?: string | null }) => {
+  const project = parseProjectJson(payload.projectJson);
+  return saveProjectToLibrary(project, payload.projectId);
+});
+ipcMain.handle("library:autosave-project", async (_event, payload: { projectJson: string; projectId: string }) => {
+  const project = parseProjectJson(payload.projectJson);
+  return autosaveLibraryProject(payload.projectId, project);
+});
+ipcMain.handle("library:open-project", async (_event, payload: { projectId: string }) => openLibraryProject(payload.projectId));
+ipcMain.handle("library:rename-project", async (_event, payload: { projectId: string; name: string }) =>
+  renameLibraryProject(payload.projectId, payload.name),
+);
+ipcMain.handle("library:duplicate-project", async (_event, payload: { projectId: string }) => duplicateLibraryProject(payload.projectId));
+ipcMain.handle("library:delete-project", async (_event, payload: { projectId: string }) => deleteLibraryProject(payload.projectId));
+ipcMain.handle("library:remove-entry", async (_event, payload: { projectId: string }) => removeLibraryEntry(payload.projectId));
+ipcMain.handle("library:reveal-project", async (_event, payload: { projectId: string }) => revealLibraryProject(payload.projectId));
+ipcMain.handle("library:import-project", async () => promptImportProjectIntoLibrary());
 
 ipcMain.handle("dialog:import-circuit", async () => {
   const window = BrowserWindow.getFocusedWindow() || mainWindow;
@@ -246,6 +286,77 @@ ipcMain.handle("dialog:export-sketch", async (_event, payload: { defaultName: st
   return { canceled: false, filePath: result.filePath };
 });
 
+ipcMain.handle("dialog:import-code", async () => {
+  const window = BrowserWindow.getFocusedWindow() || mainWindow;
+  const result = await dialog.showOpenDialog(window!, {
+    title: "Import Arduino Code",
+    properties: ["openFile"],
+    filters: [{ name: "Arduino Code", extensions: ["ino", "cpp", "h"] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true };
+  }
+  const filePath = result.filePaths[0];
+  const content = await fs.readFile(filePath, "utf8");
+  return { canceled: false, filePath, fileName: path.basename(filePath), content };
+});
+
+ipcMain.handle("plugins:get-runtime", async () => pluginRuntime);
+ipcMain.handle("plugins:reload-runtime", async () => {
+  pluginRuntime = await loadRuntimePlugins();
+  return pluginRuntime;
+});
+
+ipcMain.handle(
+  "dialog:export-text-file",
+  async (_event, payload: { defaultName: string; extension: string; title: string; content: string; mimeLabel: string }) => {
+    const window = BrowserWindow.getFocusedWindow() || mainWindow;
+    const result = await dialog.showSaveDialog(window!, {
+      title: payload.title,
+      defaultPath: `${payload.defaultName}.${payload.extension}`,
+      filters: [{ name: payload.mimeLabel, extensions: [payload.extension] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    await fs.writeFile(result.filePath, payload.content, "utf8");
+    return { canceled: false, filePath: result.filePath };
+  },
+);
+
+ipcMain.handle(
+  "dialog:export-pdf-file",
+  async (_event, payload: { defaultName: string; title: string; html: string }) => {
+    const window = BrowserWindow.getFocusedWindow() || mainWindow;
+    const result = await dialog.showSaveDialog(window!, {
+      title: payload.title,
+      defaultPath: `${payload.defaultName}.pdf`,
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+
+    const pdfWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        sandbox: true,
+      },
+    });
+    try {
+      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(payload.html)}`);
+      const pdf = await pdfWindow.webContents.printToPDF({
+        printBackground: true,
+        pageSize: "A4",
+      });
+      await fs.writeFile(result.filePath, pdf);
+      return { canceled: false, filePath: result.filePath };
+    } finally {
+      pdfWindow.destroy();
+    }
+  },
+);
+
 ipcMain.handle("storage:get-autosave", async () => (await readDesktopState()).autosave);
 ipcMain.handle("storage:get-recent-projects", async () => (await readDesktopState()).recentProjects);
 ipcMain.handle("arduino:get-config", async () => arduinoService.getConfig());
@@ -285,6 +396,19 @@ ipcMain.handle("dialog:confirm-discard", async (_event, payload: { message: stri
     defaultId: 0,
     cancelId: 0,
     title: "Unsaved changes",
+    message: payload.message,
+  });
+  return response === 1;
+});
+
+ipcMain.handle("dialog:confirm-action", async (_event, payload: { title: string; message: string; confirmLabel?: string }) => {
+  const window = BrowserWindow.getFocusedWindow() || mainWindow;
+  const { response } = await dialog.showMessageBox(window!, {
+    type: "warning",
+    buttons: ["Cancel", payload.confirmLabel ?? "Confirm"],
+    defaultId: 0,
+    cancelId: 0,
+    title: payload.title,
     message: payload.message,
   });
   return response === 1;

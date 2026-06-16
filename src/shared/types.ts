@@ -88,6 +88,19 @@ export interface CircuitProject {
   };
   components: CircuitComponent[];
   connections: CircuitConnection[];
+  code: {
+    sketch: string;
+    generatedSketch: string;
+    source: "generated" | "manual" | "imported";
+    fileName: string;
+    detectedPins: string[];
+  };
+  simulation: {
+    speed: number;
+    buttonStates: Record<string, boolean>;
+    potentiometerValues: Record<string, number>;
+    ultrasonicDistances: Record<string, number>;
+  };
 }
 
 export interface BoardPinCapability {
@@ -123,6 +136,26 @@ export interface RecentProjectEntry {
   filePath: string;
   lastOpenedAt: string;
   boardType: string;
+}
+
+export interface ProjectLibraryEntry {
+  id: string;
+  name: string;
+  description: string;
+  author: string;
+  boardType: string;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenedAt: string | null;
+  filePath: string;
+  thumbnail: string | null;
+  status: "available" | "missing" | "corrupted";
+  error: string | null;
+}
+
+export interface ProjectLibraryIndex {
+  version: 1;
+  projects: ProjectLibraryEntry[];
 }
 
 export type EditorSelection =
@@ -227,4 +260,94 @@ export interface ValidationPlugin {
   kind: "validation";
   id: string;
   validate(project: CircuitProject): ValidationWarning[];
+}
+
+export interface RuntimeGeneratorManifest {
+  id: string;
+  name: string;
+  supportedComponentTypes: string[];
+  includes?: string[];
+  definitions?: string[];
+  setup?: string[];
+  loop?: string[];
+  notes?: string[];
+}
+
+export interface RuntimeValidationRule {
+  id: string;
+  title: string;
+  description: string;
+  severity: "info" | "warning" | "danger";
+  type: "require-pin-connection" | "max-component-count";
+  componentTypes: string[];
+  pinIds?: string[];
+  maxCount?: number;
+}
+
+export interface RuntimeValidationManifest {
+  id: string;
+  name: string;
+  rules: RuntimeValidationRule[];
+}
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  boards?: BoardDefinition[];
+  components?: ComponentDefinition[];
+  generators?: RuntimeGeneratorManifest[];
+  validations?: RuntimeValidationManifest[];
+}
+
+export interface RuntimePluginRecord {
+  manifest: PluginManifest;
+  sourcePath: string;
+}
+
+export interface PluginLoadFailure {
+  filePath: string;
+  message: string;
+}
+
+export interface PluginRuntimeState {
+  pluginDirectory: string;
+  loadedAt: string;
+  loaded: RuntimePluginRecord[];
+  failures: PluginLoadFailure[];
+}
+
+export interface BomItem {
+  key: string;
+  type: string;
+  name: string;
+  category: string;
+  quantity: number;
+  references: string[];
+}
+
+export interface ProjectDocumentation {
+  title: string;
+  projectName: string;
+  generatedAt: string;
+  metadata: CircuitProjectMetadata;
+  components: Array<{
+    name: string;
+    type: string;
+    category: string;
+    position: Position;
+    pinCount: number;
+  }>;
+  connections: Array<{
+    color: string;
+    fromComponent: string;
+    fromPin: string;
+    toComponent: string;
+    toPin: string;
+  }>;
+  warnings: ValidationWarning[];
+  generatedCode: string;
+  bom: BomItem[];
 }

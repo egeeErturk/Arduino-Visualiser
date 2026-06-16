@@ -273,3 +273,234 @@ npm run electron:build
 
 - Arduino CLI-dependent actions still require a real local `arduino-cli` installation to fully function at runtime.
 - The renderer now surfaces CLI failures cleanly instead of assuming the tool exists.
+
+## 2026-06-16 Ecosystem And Distribution Pass
+
+### Features Added
+
+- Runtime plugin loading from:
+  - Electron user-data `plugins/`
+  - workspace `plugins/`
+- Safe plugin manifest validation with failure isolation
+- Plugin Manager output panel with:
+  - plugin directory visibility
+  - loaded plugin list
+  - failed plugin list
+  - reload action
+- Sample runtime plugin pack:
+  - Soil Moisture Pack
+- Bill of materials generation
+- BOM export:
+  - CSV
+  - Markdown
+- Project documentation generation including:
+  - project metadata
+  - component list
+  - connection list
+  - warnings
+  - generated code
+  - BOM
+- Project documentation export:
+  - Markdown
+  - HTML
+  - PDF
+- Added built-in board definitions for:
+  - ESP32 DevKit V1
+  - ESP8266 NodeMCU
+  - Raspberry Pi Pico
+- Added release-preparation artifacts:
+  - `CHANGELOG.md`
+  - `release-assets/download-page.md`
+  - `scripts/generate-release-notes.mjs`
+
+### Verification Results
+
+- `lint` passed
+- `typecheck` passed
+- `build` passed
+- `electron:build` passed
+- `release:notes` passed
+
+### Notes
+
+- This shell session did not expose a global `npm` command on `PATH`, so verification was executed through the bundled Node runtime and local package binaries.
+- Runtime plugins are intentionally manifest-based JSON packs for safety and packaging predictability.
+- Generated documentation PDF export uses Electron and is not available as a native PDF path in browser-only fallback mode.
+
+## 2026-06-16 Engineering Maturity Pass
+
+### What Was Added
+
+- Vitest test infrastructure with V8 coverage reporting
+- Automated tests for:
+  - plugin runtime
+  - BOM generator
+  - documentation generator
+  - circuit assistant
+  - Arduino code generator
+  - connection rules
+  - project serialization
+- GitHub Actions CI workflow for:
+  - lint
+  - typecheck
+  - test
+  - build
+- GitHub Actions release workflow for:
+  - release-note generation
+  - Windows desktop packaging
+  - artifact upload
+  - GitHub Release publishing on version tags
+- Contributor and engineering docs:
+  - `CONTRIBUTING.md`
+  - `docs/plugin-development.md`
+  - `docs/architecture.md`
+
+### Coverage Summary
+
+- Statements: 81.77%
+- Branches: 69.20%
+- Functions: 89.91%
+- Lines: 81.77%
+
+### Performance Notes
+
+- Replaced the previous single large renderer bundle with manual Vite chunk splitting for:
+  - React Flow
+  - Lucide icons
+  - remaining vendor code
+- Lazy-loaded the renderer `App` entry from `main.tsx`
+- Result:
+  - previous main JS bundle was roughly 505 kB
+  - current largest JS chunk is roughly 314 kB
+  - the earlier `>500kB` Vite warning is no longer present
+
+### Verification Results
+
+- `lint` passed
+- `typecheck` passed
+- `test` passed
+- `build` passed
+- `electron:build` passed
+
+### Environment Note
+
+- Local `npm run ...` execution was still blocked in this shell because `npm` and `node` were not both exposed on `PATH`.
+- Verification was completed by invoking the local package CLIs through the bundled Node runtime directly.
+
+## 2026-06-16 Local Project Library Pass
+
+### Features Added
+
+- Built-in local project library stored in the Electron user-data directory
+- Electron-side `projectLibrary` service for:
+  - listing projects
+  - saving to library
+  - autosaving library projects
+  - opening library projects
+  - renaming
+  - duplicating
+  - deleting
+  - revealing in folder
+  - importing external `.avc` or `.json` into the library
+  - removing broken library entries from the index
+- Project index file:
+  - `projects/index.json`
+- Internal project storage:
+  - `projects/<project-id>.avc`
+- Dashboard upgrades:
+  - Recent Projects
+  - All Projects
+  - Templates
+  - Create New Project
+  - Import Existing `.avc`
+  - external recent files
+  - library search/filter
+- Save behavior split into:
+  - Save to app library
+  - Save As external `.avc`
+- Library autosave updates internal library project files when the active project belongs to the library
+- Missing or corrupted library files now show as unavailable and can be removed from the library index safely
+
+### Verification Results
+
+- `lint` passed
+- `typecheck` passed
+- `build` passed
+- `electron:build` passed
+
+### Limitations
+
+- Project thumbnails/previews are not generated yet.
+- Rename currently uses a prompt-based UI rather than a dedicated modal.
+
+## 2026-06-16 Code Editor And Simulation Pass
+
+### What Was Added
+
+- Monaco-based Arduino code editor integrated into the main desktop workspace
+- New workspace tabs:
+  - Circuit
+  - Code
+  - Simulation
+  - Serial Monitor
+- Code import support for:
+  - `.ino`
+  - `.cpp`
+  - `.h`
+- Heuristic pin detection from code using common Arduino patterns such as:
+  - `pinMode`
+  - `digitalWrite`
+  - `digitalRead`
+  - `analogRead`
+  - `analogWrite`
+  - `Servo.attach`
+- Project schema updates so `.avc` files can now store:
+  - manual/imported code
+  - generated code
+  - detected pins
+  - simulation settings
+- Beginner-friendly logic simulation engine for a safe Arduino subset
+- Simulated serial output panel using interpreted `Serial.print` / `Serial.println`
+- Simulation controls for:
+  - start
+  - pause
+  - stop
+  - step
+  - reset
+  - speed
+- Simulation-side interactive inputs for:
+  - push buttons
+  - potentiometers
+  - ultrasonic sensors
+- Canvas simulation overlays for:
+  - active wires
+  - active pins
+  - component state badges
+
+### Supported Simulation Subset
+
+- `pinMode`
+- `digitalWrite`
+- `digitalRead`
+- `analogRead`
+- `analogWrite`
+- `delay`
+- `millis`
+- `Serial.begin`
+- `Serial.print`
+- `Serial.println`
+- `Servo.attach`
+- `Servo.write`
+
+### Verification Results
+
+- `lint` passed
+- `typecheck` passed
+- `build` passed
+- `electron:build` passed
+
+### Limitations
+
+- This is not a full electrical simulator or full C++ runtime.
+- Unsupported Arduino syntax is surfaced as simulation notes and warnings instead of being executed.
+- Code import pin detection is heuristic and intentionally not a full parser.

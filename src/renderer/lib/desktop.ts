@@ -35,6 +35,14 @@ export async function confirmDiscard(message: string) {
   return window.confirm(message);
 }
 
+export async function confirmAction(title: string, message: string, confirmLabel?: string) {
+  if (window.desktop?.confirmAction) {
+    return window.desktop.confirmAction({ title, message, confirmLabel });
+  }
+
+  return window.confirm(`${title}\n\n${message}`);
+}
+
 export async function readJsonFileFromBrowser(): Promise<string | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
@@ -72,6 +80,30 @@ export function downloadTextFile(defaultName: string, content: string, extension
   URL.revokeObjectURL(url);
 }
 
+export async function exportTextFile(
+  defaultName: string,
+  extension: string,
+  title: string,
+  content: string,
+  mimeLabel: string,
+) {
+  if (window.desktop) {
+    return window.desktop.exportTextFile({ defaultName, extension, title, content, mimeLabel });
+  }
+
+  downloadTextFile(defaultName, content, extension, mimeLabel === "HTML" ? "text/html" : "text/plain");
+  return { canceled: false };
+}
+
+export async function exportPdfFile(defaultName: string, title: string, html: string) {
+  if (window.desktop) {
+    return window.desktop.exportPdfFile({ defaultName, title, html });
+  }
+
+  downloadTextFile(defaultName, html, "html", "text/html");
+  return { canceled: false };
+}
+
 export async function getRecentProjects() {
   if (window.desktop) {
     return window.desktop.getRecentProjects();
@@ -87,4 +119,16 @@ export async function getRecentProjects() {
   } catch {
     return [];
   }
+}
+
+export async function getLibraryProjects(search?: string) {
+  if (window.desktop?.listLibraryProjects) {
+    return window.desktop.listLibraryProjects(search);
+  }
+
+  return {
+    projectDirectory: "",
+    recentProjects: [],
+    allProjects: [],
+  };
 }

@@ -10,7 +10,7 @@ export default function CircuitEdge({
   targetPosition,
   selected,
   data,
-}: EdgeProps<{ color: string; label: string }>) {
+}: EdgeProps<{ color: string; label: string; active?: boolean }>) {
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -27,10 +27,10 @@ export default function CircuitEdge({
         path={path}
         style={{
           stroke: data?.color || "#f97316",
-          strokeWidth: selected ? 5 : 3.5,
-          filter: selected ? "drop-shadow(0 0 12px rgba(249, 115, 22, 0.4))" : "none",
-          opacity: selected ? 1 : 0.9,
-          transition: "stroke-width 160ms ease, opacity 160ms ease",
+          strokeWidth: selected ? 5 : data?.active ? 4.5 : 3.5,
+          filter: selected || data?.active ? "drop-shadow(0 0 12px rgba(249, 115, 22, 0.4))" : "none",
+          opacity: selected || data?.active ? 1 : 0.9,
+          transition: "stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease",
         }}
       />
       <EdgeLabelRenderer>

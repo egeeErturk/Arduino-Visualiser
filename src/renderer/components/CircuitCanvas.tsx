@@ -26,6 +26,12 @@ const nodeTypes = { circuitNode: CircuitNode };
 const edgeTypes = { circuitEdge: CircuitEdge };
 const handlePrefix = "pin:";
 
+interface SimulationOverlay {
+  activeConnectionIds: string[];
+  activePins: string[];
+  componentStates: Record<string, string | number | boolean>;
+}
+
 function parsePinId(handleId: string | null | undefined) {
   if (!handleId?.startsWith(handlePrefix)) {
     return null;
@@ -33,7 +39,7 @@ function parsePinId(handleId: string | null | undefined) {
   return handleId.slice(handlePrefix.length);
 }
 
-function CanvasInner() {
+function CanvasInner({ simulationOverlay }: { simulationOverlay?: SimulationOverlay }) {
   const reactFlow = useReactFlow();
   const project = useCircuitStore((state) => state.project);
   const selection = useCircuitStore((state) => state.selection);
@@ -101,9 +107,10 @@ function CanvasInner() {
         activeDragSource,
         canConnectPin,
         getCompatibility,
+        simulationOverlay,
       },
     }));
-  }, [activeDragSource, canConnectPin, getCompatibility, highlightedWarning?.componentIds, pendingPin, project.components, project.connections, selection]);
+  }, [activeDragSource, canConnectPin, getCompatibility, highlightedWarning?.componentIds, pendingPin, project.components, project.connections, selection, simulationOverlay]);
 
   const edges = useMemo<Edge[]>(() => {
     return project.connections.map((connection) => {
@@ -126,10 +133,11 @@ function CanvasInner() {
           label: sourceComponent && sourcePin && targetComponent && targetPin
             ? `${sourceComponent.name} ${sourcePin.label} -> ${targetComponent.name} ${targetPin.label}`
             : "Wire",
+          active: simulationOverlay?.activeConnectionIds.includes(connection.id) ?? false,
         },
       };
     });
-  }, [project.components, project.connections, selection]);
+  }, [project.components, project.connections, selection, simulationOverlay?.activeConnectionIds]);
 
   const onNodesChange = (changes: NodeChange[]) => {
     const moved = changes.find(
@@ -249,10 +257,10 @@ function CanvasInner() {
   );
 }
 
-export default function CircuitCanvas() {
+export default function CircuitCanvas({ simulationOverlay }: { simulationOverlay?: SimulationOverlay }) {
   return (
     <ReactFlowProvider>
-      <CanvasInner />
+      <CanvasInner simulationOverlay={simulationOverlay} />
     </ReactFlowProvider>
   );
 }

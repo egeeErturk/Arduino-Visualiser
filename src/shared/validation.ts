@@ -5,6 +5,7 @@ import type {
   CircuitProject,
   ValidationWarning,
 } from "./types.js";
+import { getValidationPlugins } from "./plugins.js";
 
 interface PinRef {
   component: CircuitComponent;
@@ -163,7 +164,7 @@ export function validateProject(project: CircuitProject): ValidationWarning[] {
       }
     }
 
-    if (["servo-motor", "ultrasonic-sensor", "arduino-uno", "arduino-nano", "buzzer"].includes(component.type)) {
+    if (["servo-motor", "ultrasonic-sensor", "arduino-uno", "arduino-nano", "esp32-devkit-v1", "esp8266-nodemcu", "raspberry-pi-pico", "buzzer"].includes(component.type)) {
       const hasPower = component.pins
         .filter((pin: CircuitPin) => pin.kind === "power")
         .some((pin: CircuitPin) => (connectionsByPin.get(`${component.id}:${pin.id}`) || []).length > 0);
@@ -205,7 +206,7 @@ export function validateProject(project: CircuitProject): ValidationWarning[] {
       }
     }
 
-    if (component.type.startsWith("arduino")) {
+    if (["arduino-uno", "arduino-nano", "esp32-devkit-v1", "esp8266-nodemcu", "raspberry-pi-pico"].includes(component.type)) {
       for (const pin of component.pins.filter((candidate: CircuitPin) => candidate.direction === "output")) {
         const related = connectionsByPin.get(`${component.id}:${pin.id}`) || [];
         const activeInputs = related.filter((connection: CircuitConnection) => {
@@ -229,6 +230,10 @@ export function validateProject(project: CircuitProject): ValidationWarning[] {
         }
       }
     }
+  }
+
+  for (const plugin of getValidationPlugins()) {
+    warnings.push(...plugin.validate(project));
   }
 
   return warnings;

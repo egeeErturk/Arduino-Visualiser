@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { catalogByType, componentCatalog } from "../../shared/catalog";
 import { cloneProject, createComponentFromDefinition, createEmptyProject, createId, serializeProject } from "../../shared/project";
+import { getCatalogByType, getComponentCatalog } from "../../shared/plugins";
 import { validateProject } from "../../shared/validation";
 import type {
   PinCompatibilityResult,
@@ -16,6 +16,7 @@ type PendingPin = { componentId: string; pinId: string } | null;
 interface EditorState {
   project: CircuitProject;
   filePath: string | null;
+  libraryProjectId: string | null;
   dirty: boolean;
   selection: EditorSelection;
   pendingPin: PendingPin;
@@ -30,7 +31,13 @@ interface EditorState {
   transientMoveSnapshot: CircuitProject | null;
   setProject(
     project: CircuitProject,
-    options?: { filePath?: string | null; dirty?: boolean; resetHistory?: boolean; pushCurrentToHistory?: boolean },
+    options?: {
+      filePath?: string | null;
+      libraryProjectId?: string | null;
+      dirty?: boolean;
+      resetHistory?: boolean;
+      pushCurrentToHistory?: boolean;
+    },
   ): void;
   mutateProject(
     recipe: (draft: CircuitProject) => void,
@@ -56,6 +63,8 @@ interface EditorState {
   setHighlightedWarning(id: string | null): void;
   setConnectionHint(hint: PinCompatibilityResult | null): void;
   updateMetadata(metadata: Partial<CircuitProjectMetadata>): void;
+  updateCode(code: Partial<CircuitProject["code"]>): void;
+  updateSimulation(simulation: Partial<CircuitProject["simulation"]>): void;
 }
 
 function withUpdatedTimestamp(project: CircuitProject) {
@@ -87,6 +96,7 @@ function getNextPlacementPosition(project: CircuitProject, requested: Position):
 export const useCircuitStore = create<EditorState>((set, get) => ({
   project: createEmptyProject(),
   filePath: null,
+  libraryProjectId: null,
   dirty: false,
   selection: null,
   pendingPin: null,
@@ -104,6 +114,7 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
       ...state,
       project: cloneProject(project),
       filePath: options?.filePath ?? state.filePath,
+      libraryProjectId: options?.libraryProjectId ?? state.libraryProjectId,
       dirty: options?.dirty ?? state.dirty,
       selection: null,
       pendingPin: null,
@@ -142,7 +153,7 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
     set((state) => ({ ...state, pendingPin: pin }));
   },
   addComponent(type, position) {
-    const definition = catalogByType[type];
+    const definition = getCatalogByType()[type];
     if (!definition) {
       return;
     }
@@ -313,9 +324,21 @@ export const useCircuitStore = create<EditorState>((set, get) => ({
       draft.metadata = { ...draft.metadata, ...metadata };
     }, { recordHistory: false });
   },
+  updateCode(code) {
+    get().mutateProject((draft) => {
+      draft.code = { ...draft.code, ...code };
+    }, { recordHistory: false });
+  },
+  updateSimulation(simulation) {
+    get().mutateProject((draft) => {
+      draft.simulation = { ...draft.simulation, ...simulation };
+    }, { recordHistory: false });
+  },
 }));
 
-export const componentLibrary = componentCatalog;
+export function getComponentLibrary() {
+  return getComponentCatalog();
+}
 
 export function exportProjectJson() {
   return serializeProject(useCircuitStore.getState().project);
@@ -324,22 +347,39 @@ export function exportProjectJson() {
 export function replaceLoadedProject(project: CircuitProject, filePath: string | null, dirty = false) {
   useCircuitStore.getState().setProject(project, {
     filePath,
+    libraryProjectId: null,
     dirty,
     pushCurrentToHistory: true,
   });
 }
 
-export function restoreInitialProject(project: CircuitProject, filePath: string | null, dirty = false) {
+export function replaceLibraryProject(project: CircuitProject, projectId: string, filePath: string, dirty = false) {
   useCircuitStore.getState().setProject(project, {
     filePath,
+    libraryProjectId: projectId,
+    dirty,
+    pushCurrentToHistory: true,
+  });
+}
+
+export function restoreInitialProject(
+  project: CircuitProject,
+  filePath: string | null,
+  dirty = false,
+  libraryProjectId: string | null = null,
+) {
+  useCircuitStore.getState().setProject(project, {
+    filePath,
+    libraryProjectId,
     dirty,
     resetHistory: true,
   });
 }
 
-export function markProjectSaved(project: CircuitProject, filePath: string | null) {
+export function markProjectSaved(project: CircuitProject, filePath: string | null, libraryProjectId: string | null = null) {
   useCircuitStore.getState().setProject(project, {
     filePath,
+    libraryProjectId,
     dirty: false,
     resetHistory: false,
     pushCurrentToHistory: false,

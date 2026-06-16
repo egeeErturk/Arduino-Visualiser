@@ -13,6 +13,10 @@ interface CircuitNodeData {
   activeDragSource: { componentId: string; pinId: string } | null;
   canConnectPin: (componentId: string, pinId: string) => boolean;
   getCompatibility: (componentId: string, pinId: string) => PinCompatibilityResult | null;
+  simulationOverlay?: {
+    activePins: string[];
+    componentStates: Record<string, string | number | boolean>;
+  };
 }
 
 function pinPosition(side: CircuitComponent["pins"][number]["side"]) {
@@ -50,6 +54,9 @@ function renderVisual(component: CircuitComponent) {
         </div>
       );
     case "arduino-nano":
+    case "esp32-devkit-v1":
+    case "esp8266-nodemcu":
+    case "raspberry-pi-pico":
       return (
         <div className="board-nano">
           <div className="nano-chip" />
@@ -161,6 +168,7 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
       className={[
         "circuit-node",
         `visual-${component.type}`,
+        data.simulationOverlay?.componentStates[component.id] ? "simulation-active" : "",
         selected ? "selected" : "",
         data.isHighlighted ? "node-highlighted" : "",
         data.isWarningTarget ? "warning-target" : "",
@@ -188,6 +196,7 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
         const isDragTarget = data.canConnectPin(component.id, pin.id);
         const compatibility = data.getCompatibility(component.id, pin.id);
         const isInvalidTarget = !!data.activeDragSource && compatibility?.valid === false && !isDragSource;
+        const isSimulationHigh = data.simulationOverlay?.activePins.includes(pin.label) ?? false;
 
         return (
           <div
@@ -200,6 +209,7 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
               isDragSource ? "drag-source" : "",
               isDragTarget ? "drag-target" : "",
               isInvalidTarget ? "drag-invalid" : "",
+              isSimulationHigh ? "simulation-high" : "",
             ].join(" ")}
             style={
               pin.side === "left" || pin.side === "right"
@@ -234,6 +244,11 @@ function CircuitNode({ data, selected }: NodeProps<CircuitNodeData>) {
           </div>
         );
       })}
+      {data.simulationOverlay?.componentStates[component.id] !== undefined && (
+        <div className="simulation-badge">
+          {String(data.simulationOverlay.componentStates[component.id])}
+        </div>
+      )}
     </div>
   );
 }

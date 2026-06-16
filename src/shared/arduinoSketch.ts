@@ -1,4 +1,4 @@
-import { boardByType } from "./boards.js";
+import { getBoardByType, getGeneratorPlugins } from "./plugins.js";
 import type {
   CircuitComponent,
   CircuitPin,
@@ -8,7 +8,12 @@ import type {
   GeneratorSection,
 } from "./types.js";
 
-type ArduinoBoard = "arduino-uno" | "arduino-nano";
+type ArduinoBoard =
+  | "arduino-uno"
+  | "arduino-nano"
+  | "esp32-devkit-v1"
+  | "esp8266-nodemcu"
+  | "raspberry-pi-pico";
 type SupportedComponentType =
   | "led"
   | "push-button"
@@ -152,7 +157,7 @@ function traverseFromPin(
 
 function analyzeCircuit(project: CircuitProject): SketchAnalysis {
   const board = project.components.find((component) =>
-    component.type === "arduino-uno" || component.type === "arduino-nano",
+    ["arduino-uno", "arduino-nano", "esp32-devkit-v1", "esp8266-nodemcu", "raspberry-pi-pico"].includes(component.type),
   ) ?? null;
 
   const analysis: SketchAnalysis = {
@@ -169,7 +174,7 @@ function analyzeCircuit(project: CircuitProject): SketchAnalysis {
   };
 
   if (!board) {
-    analysis.notes.push("No Arduino Uno or Nano was found in the current circuit.");
+    analysis.notes.push("No supported Arduino-family controller board was found in the current circuit.");
     return analysis;
   }
 
@@ -452,9 +457,9 @@ function createGeneratorPlugins(analysis: SketchAnalysis): GeneratorPlugin[] {
 }
 
 function generateCode(project: CircuitProject, analysis: SketchAnalysis) {
-  const board = analysis.boardType ? boardByType[analysis.boardType] : null;
+  const board = analysis.boardType ? getBoardByType()[analysis.boardType] : null;
   const context: GeneratorContext = { project, board };
-  const plugins = createGeneratorPlugins(analysis);
+  const plugins = [...createGeneratorPlugins(analysis), ...getGeneratorPlugins()];
 
   const activePlugins = plugins.filter((plugin) =>
     project.components.some((component) => plugin.supports(component.type)),

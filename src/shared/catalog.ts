@@ -57,6 +57,63 @@ export const componentCatalog: ComponentDefinition[] = [
     ],
   },
   {
+    type: "esp32-devkit-v1",
+    name: "ESP32 DevKit V1",
+    category: "Controllers",
+    size: { width: 210, height: 320 },
+    accent: "#b91c1c",
+    visualStyle: "arduino-nano",
+    pins: [
+      ...["D2", "D4", "D5", "D12", "D13", "D14", "D15", "D18", "D19"].map((label, index) =>
+        pin(label.toLowerCase(), label, "left", 30 + index * 28, "digital", "output"),
+      ),
+      ...["D21", "D22", "D23", "D25", "D26", "D27", "D32", "D33", "D34", "D35"].map((label, index) =>
+        pin(label.toLowerCase(), label, "right", 26 + index * 24, label === "D34" || label === "D35" ? "analog" : "signal", "bidirectional"),
+      ),
+      pin("3v3", "3V3", "top", 56, "power", "power"),
+      pin("vin", "VIN", "top", 136, "power", "power"),
+      pin("gnd", "GND", "bottom", 104, "ground", "ground"),
+    ],
+  },
+  {
+    type: "esp8266-nodemcu",
+    name: "ESP8266 NodeMCU",
+    category: "Controllers",
+    size: { width: 190, height: 300 },
+    accent: "#0284c7",
+    visualStyle: "arduino-nano",
+    pins: [
+      ...["D0", "D1", "D2", "D3", "D4"].map((label, index) =>
+        pin(label.toLowerCase(), label, "left", 40 + index * 36, "digital", "output"),
+      ),
+      ...["D5", "D6", "D7", "D8", "A0"].map((label, index) =>
+        pin(label.toLowerCase(), label, "right", 40 + index * 36, label === "A0" ? "analog" : "digital", "bidirectional"),
+      ),
+      pin("3v3", "3V3", "top", 48, "power", "power"),
+      pin("vin", "VIN", "top", 118, "power", "power"),
+      pin("gnd", "GND", "bottom", 94, "ground", "ground"),
+    ],
+  },
+  {
+    type: "raspberry-pi-pico",
+    name: "Raspberry Pi Pico",
+    category: "Controllers",
+    size: { width: 210, height: 320 },
+    accent: "#7c3aed",
+    visualStyle: "arduino-nano",
+    pins: [
+      ...["GP0", "GP1", "GP2", "GP3", "GP4", "GP5", "GP6"].map((label, index) =>
+        pin(label.toLowerCase(), label, "left", 32 + index * 34, "digital", "bidirectional"),
+      ),
+      ...["GP7", "GP8", "GP9", "GP10", "GP11", "GP26", "GP27", "GP28"].map((label, index) =>
+        pin(label.toLowerCase(), label, "right", 26 + index * 28, label.startsWith("GP2") ? "analog" : "digital", "bidirectional"),
+      ),
+      pin("3v3", "3V3", "top", 54, "power", "power"),
+      pin("vsys", "VSYS", "top", 138, "power", "power"),
+      pin("gnd", "GND", "bottom", 104, "ground", "ground"),
+    ],
+  },
+  {
     type: "breadboard",
     name: "Breadboard",
     category: "Prototyping",

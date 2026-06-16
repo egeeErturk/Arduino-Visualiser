@@ -11,7 +11,24 @@ contextBridge.exposeInMainWorld("desktop", {
     ipcRenderer.invoke("dialog:export-circuit", payload),
   exportSketch: (payload: { defaultName: string; sketchCode: string }) =>
     ipcRenderer.invoke("dialog:export-sketch", payload),
+  importCode: () => ipcRenderer.invoke("dialog:import-code"),
+  exportTextFile: (payload: { defaultName: string; extension: string; title: string; content: string; mimeLabel: string }) =>
+    ipcRenderer.invoke("dialog:export-text-file", payload),
+  exportPdfFile: (payload: { defaultName: string; title: string; html: string }) =>
+    ipcRenderer.invoke("dialog:export-pdf-file", payload),
   importCircuit: () => ipcRenderer.invoke("dialog:import-circuit"),
+  listLibraryProjects: (search?: string) => ipcRenderer.invoke("library:list-projects", { search }),
+  saveLibraryProject: (payload: { projectJson: string; projectId?: string | null }) => ipcRenderer.invoke("library:save-project", payload),
+  autosaveLibraryProject: (payload: { projectJson: string; projectId: string }) => ipcRenderer.invoke("library:autosave-project", payload),
+  openLibraryProject: (projectId: string) => ipcRenderer.invoke("library:open-project", { projectId }),
+  renameLibraryProject: (payload: { projectId: string; name: string }) => ipcRenderer.invoke("library:rename-project", payload),
+  duplicateLibraryProject: (projectId: string) => ipcRenderer.invoke("library:duplicate-project", { projectId }),
+  deleteLibraryProject: (projectId: string) => ipcRenderer.invoke("library:delete-project", { projectId }),
+  removeLibraryEntry: (projectId: string) => ipcRenderer.invoke("library:remove-entry", { projectId }),
+  revealLibraryProject: (projectId: string) => ipcRenderer.invoke("library:reveal-project", { projectId }),
+  importProjectIntoLibrary: () => ipcRenderer.invoke("library:import-project"),
+  getPluginRuntime: () => ipcRenderer.invoke("plugins:get-runtime"),
+  reloadPluginRuntime: () => ipcRenderer.invoke("plugins:reload-runtime"),
   getRecentProjects: () => ipcRenderer.invoke("storage:get-recent-projects"),
   getAutosave: () => ipcRenderer.invoke("storage:get-autosave"),
   getArduinoConfig: () => ipcRenderer.invoke("arduino:get-config"),
@@ -33,5 +50,6 @@ contextBridge.exposeInMainWorld("desktop", {
   setAutosave: (projectJson: string) => ipcRenderer.invoke("storage:set-autosave", { projectJson }),
   clearAutosave: () => ipcRenderer.invoke("storage:clear-autosave"),
   confirmDiscard: (message: string) => ipcRenderer.invoke("dialog:confirm-discard", { message }),
+  confirmAction: (payload: { title: string; message: string; confirmLabel?: string }) => ipcRenderer.invoke("dialog:confirm-action", payload),
   setDirtyState: (dirty: boolean) => ipcRenderer.send("editor:set-dirty", { dirty }),
 });

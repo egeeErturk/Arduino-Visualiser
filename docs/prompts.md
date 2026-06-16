@@ -23,3 +23,6 @@
 - Preserve Electron, React, TypeScript, React Flow, Zustand, Zod, undo/redo, save/load, and packaging stability while adding the new workflow features.
 - Integrate Arduino CLI as a service layer for board detection, compile, upload, and serial monitor workflows.
 - Add a smart circuit assistant and pin-compatibility engine without regressing the existing editor and packaging behavior.
+- Add runtime plugin loading, BOM export, project documentation export, additional board support, and release-preparation assets without removing any existing desktop functionality.
+- Add testing infrastructure, CI/CD workflows, release automation, performance-oriented bundle splitting, and contributor/architecture documentation without introducing new major end-user features.
+- Add a professional Arduino code editor, code import workflow, and beginner-friendly simulation engine without claiming full electrical simulation or breaking Electron packaging.

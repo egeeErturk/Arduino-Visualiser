@@ -31,4 +31,17 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ["src/**/*.test.ts"],
+    languageOptions: {
+      globals: {
+        afterEach: "readonly",
+        beforeEach: "readonly",
+        describe: "readonly",
+        expect: "readonly",
+        it: "readonly",
+        vi: "readonly",
+      },
+    },
+  },
 );

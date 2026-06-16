@@ -1,0 +1,51 @@
+{
+  "id": "plugin.soil-moisture-pack",
+  "name": "Soil Moisture Pack",
+  "version": "1.0.0",
+  "description": "Adds a beginner soil moisture sensor component, board compatibility metadata, starter code notes, and validation rules.",
+  "author": "OpenAI Codex",
+  "components": [
+    {
+      "type": "soil-moisture-sensor",
+      "name": "Soil Moisture Sensor",
+      "category": "Sensors",
+      "size": { "width": 180, "height": 132 },
+      "accent": "#15803d",
+      "visualStyle": "sensor",
+      "boardTargets": ["arduino-uno", "arduino-nano", "esp32-devkit-v1", "esp8266-nodemcu", "raspberry-pi-pico"],
+      "pins": [
+        { "id": "vcc", "label": "VCC", "side": "bottom", "offset": 36, "kind": "power", "direction": "power" },
+        { "id": "ao", "label": "AO", "side": "bottom", "offset": 88, "kind": "analog", "direction": "output" },
+        { "id": "do", "label": "DO", "side": "bottom", "offset": 136, "kind": "signal", "direction": "output" },
+        { "id": "gnd", "label": "GND", "side": "bottom", "offset": 164, "kind": "ground", "direction": "ground" }
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "id": "soil-moisture-generator",
+      "name": "Soil Moisture Starter",
+      "supportedComponentTypes": ["soil-moisture-sensor"],
+      "notes": [
+        "Runtime plugin detected a soil moisture sensor. Extend the generated sketch with analogRead() or digital threshold logic as needed."
+      ]
+    }
+  ],
+  "validations": [
+    {
+      "id": "soil-moisture-validation",
+      "name": "Soil Moisture Wiring",
+      "rules": [
+        {
+          "id": "soil-sensor-needs-output",
+          "title": "Soil moisture sensor is incomplete",
+          "description": "The sensor should have at least one output connection before generating firmware or documentation.",
+          "severity": "warning",
+          "type": "require-pin-connection",
+          "componentTypes": ["soil-moisture-sensor"],
+          "pinIds": ["ao", "do"]
+        }
+      ]
+    }
+  ]
+}
