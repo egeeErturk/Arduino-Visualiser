@@ -1390,6 +1390,104 @@ button {
   gap: 10px;
 }
 
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.monitor-card {
+  border-radius: 18px;
+  border: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.monitor-card-header {
+  padding-bottom: 10px;
+}
+
+.monitor-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.monitor-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-primary) 58%, transparent);
+  border: 1px solid var(--border-soft);
+}
+
+.monitor-stat span {
+  color: var(--text-muted);
+}
+
+.tone-ok {
+  color: #16a34a;
+}
+
+.tone-warning {
+  color: #d97706;
+}
+
+.tone-danger {
+  color: #dc2626;
+}
+
+.monitor-table-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-primary) 58%, transparent);
+  border: 1px solid var(--border-soft);
+}
+
+.progress-row {
+  display: grid;
+  gap: 8px;
+}
+
+.progress-row-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.progress-fill.ok {
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.progress-fill.warning {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.progress-fill.danger {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
 .output-warning,
 .activity-entry {
   padding: 12px 14px;

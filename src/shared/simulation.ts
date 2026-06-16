@@ -6,6 +6,7 @@ export interface SimulationState {
   running: boolean;
   setupComplete: boolean;
   loopPointer: number;
+  loopCount: number;
   millis: number;
   warnings: string[];
   serial: string[];
@@ -272,6 +273,7 @@ export function createInitialSimulationState(project: CircuitProject): Simulatio
     running: false,
     setupComplete: false,
     loopPointer: 0,
+    loopCount: 0,
     millis: 0,
     warnings: [],
     serial: [],
@@ -428,6 +430,7 @@ export function stepSimulation(project: CircuitProject, previous?: SimulationSta
     state.warnings.push(error instanceof Error ? error.message : "Unsupported simulation statement.");
   }
   state.loopPointer = (state.loopPointer + 1) % program.loopStatements.length;
+  state.loopCount += 1;
   state.millis += 16 * project.simulation.speed;
   state.detectedPins = project.code.detectedPins;
   deriveComponentStates(project, state);

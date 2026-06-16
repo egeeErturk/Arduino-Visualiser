@@ -79,6 +79,7 @@ export const circuitProjectSchema = z.object({
     potentiometerValues: {},
     ultrasonicDistances: {},
   }),
+  extensions: z.record(z.string(), z.unknown()).optional().default({}),
 });
 
 export function createId(prefix: string) {
@@ -134,6 +135,7 @@ export function createEmptyProject(name = "Untitled Circuit"): CircuitProject {
       potentiometerValues: {},
       ultrasonicDistances: {},
     },
+    extensions: {},
   };
 }
 
@@ -238,5 +240,6 @@ export function normalizeImportedProject(project: CircuitProject): CircuitProjec
       potentiometerValues: project.simulation?.potentiometerValues ?? {},
       ultrasonicDistances: project.simulation?.ultrasonicDistances ?? {},
     },
+    extensions: project.extensions ?? {},
   };
 }

@@ -101,6 +101,7 @@ export interface CircuitProject {
     potentiometerValues: Record<string, number>;
     ultrasonicDistances: Record<string, number>;
   };
+  extensions: Record<string, unknown>;
 }
 
 export interface BoardPinCapability {
@@ -108,6 +109,8 @@ export interface BoardPinCapability {
   analog?: boolean;
   digital?: boolean;
   serial?: boolean;
+  i2c?: boolean;
+  spi?: boolean;
 }
 
 export interface BoardDefinition {
@@ -317,6 +320,69 @@ export interface PluginRuntimeState {
   loadedAt: string;
   loaded: RuntimePluginRecord[];
   failures: PluginLoadFailure[];
+}
+
+export interface ProjectSchemaExtension {
+  key: string;
+  description: string;
+  defaultValue?: unknown;
+}
+
+export interface ToolbarActionDefinition {
+  id: string;
+  label: string;
+  description: string;
+  location: "topbar" | "workspace";
+  order?: number;
+}
+
+export interface BottomPanelTabDefinition {
+  id: string;
+  label: string;
+  description: string;
+  order?: number;
+}
+
+export interface SettingsSectionDefinition {
+  id: string;
+  label: string;
+  description: string;
+  order?: number;
+}
+
+export interface SimulationComponentDefinition {
+  type: string;
+  displayName: string;
+  supportedInputs: string[];
+  supportedOutputs: string[];
+}
+
+export interface ExporterDefinition {
+  id: string;
+  label: string;
+  format: string;
+  description: string;
+}
+
+export interface UiPanelDefinition {
+  id: string;
+  label: string;
+  location: "right" | "bottom" | "modal" | "dashboard";
+  description: string;
+}
+
+export interface FeatureModuleDefinition {
+  id: string;
+  name: string;
+  description: string;
+  toolbarActions?: ToolbarActionDefinition[];
+  bottomPanelTabs?: BottomPanelTabDefinition[];
+  settingsSections?: SettingsSectionDefinition[];
+  uiPanels?: UiPanelDefinition[];
+  validationRuleIds?: string[];
+  simulationComponents?: SimulationComponentDefinition[];
+  exporterIds?: string[];
+  schemaExtensions?: ProjectSchemaExtension[];
 }
 
 export interface BomItem {

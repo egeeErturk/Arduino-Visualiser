@@ -34,8 +34,19 @@ import { analyzeCircuitProject } from "../shared/circuitAssistant";
 import { generateArduinoSketch } from "../shared/arduinoSketch";
 import { generateBom, bomToCsv, bomToMarkdown } from "../shared/bom";
 import { detectPinsFromCode, importCodeContent } from "../shared/codeImport";
+import {
+  getArduinoCliMetrics,
+  getBoardUsage,
+  getCircuitHealth,
+  getComponentUsage,
+  getPerformanceMetrics,
+  getPluginMetrics,
+  getProjectMetrics,
+  getSimulationMetrics,
+} from "../shared/monitoring";
 import { getBoardByType, getBoardCatalog, getCatalogByType, setRuntimePluginState } from "../shared/plugins";
 import { buildProjectDocumentation, documentationToHtml, documentationToMarkdown } from "../shared/projectDocumentation";
+import { getBottomPanelTabRegistry, getFeatureModules } from "../shared/registries";
 import { createEmptyProject, parseProjectJson, serializeProject } from "../shared/project";
 import { createInitialSimulationState, stepSimulation, type SimulationState } from "../shared/simulation";
 import { projectTemplates } from "../shared/templates";
@@ -64,7 +75,7 @@ import {
 } from "./store/useCircuitStore";
 import "./styles.css";
 
-type BottomTab = "warnings" | "activity" | "code" | "assistant" | "arduino" | "bom" | "docs" | "plugins";
+type BottomTab = "warnings" | "activity" | "code" | "assistant" | "arduino" | "bom" | "docs" | "plugins" | "monitor";
 type WorkspaceTab = "circuit" | "code" | "simulation" | "serial";
 
 export default function App() {
@@ -124,6 +135,10 @@ export default function App() {
   const [selectedPort, setSelectedPort] = useState("");
   const [arduinoOutput, setArduinoOutput] = useState("Arduino CLI output will appear here.");
   const [serialOutput, setSerialOutput] = useState("Serial monitor is idle.");
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [lastCompileStatus, setLastCompileStatus] = useState<"success" | "error" | "idle">("idle");
+  const [lastUploadStatus, setLastUploadStatus] = useState<"success" | "error" | "idle">("idle");
+  const [serialMonitorStatus, setSerialMonitorStatus] = useState<"running" | "stopped" | "idle">("idle");
   const [pluginRuntime, setPluginRuntime] = useState<PluginRuntimeState>({
     pluginDirectory: "",
     loadedAt: new Date(0).toISOString(),
@@ -141,6 +156,8 @@ export default function App() {
   const catalogByType = getCatalogByType();
   const boardCatalog = getBoardCatalog();
   const boardByType = getBoardByType();
+  const featureModules = getFeatureModules();
+  const bottomTabs = getBottomPanelTabRegistry();
 
   const selectedComponent = selection?.type === "component"
     ? project.components.find((component) => component.id === selection.id) ?? null
@@ -161,6 +178,40 @@ export default function App() {
       ...Object.entries(simulationState.analogPins).filter(([, value]) => value > 0).map(([pin]) => pin),
     ],
     [simulationState.analogPins, simulationState.digitalPins],
+  );
+  const projectMetrics = useMemo(
+    () => getProjectMetrics(project, warnings, {
+      dirty,
+      filePath,
+      libraryProjectId,
+      lastSavedAt,
+    }),
+    [dirty, filePath, lastSavedAt, libraryProjectId, project, warnings],
+  );
+  const circuitHealth = useMemo(() => getCircuitHealth(project, warnings), [project, warnings]);
+  const boardUsage = useMemo(() => getBoardUsage(project, currentBoard ?? null), [currentBoard, project]);
+  const componentUsage = useMemo(() => getComponentUsage(project), [project]);
+  const simulationMetrics = useMemo(() => getSimulationMetrics(simulationState), [simulationState]);
+  const pluginMetrics = useMemo(() => getPluginMetrics(pluginRuntime), [pluginRuntime]);
+  const arduinoCliMetrics = useMemo(
+    () => getArduinoCliMetrics({
+      cliStatus: arduinoStatus,
+      ports: arduinoPorts,
+      selectedPort: selectedPort || null,
+      lastCompileStatus,
+      lastUploadStatus,
+      serialMonitorStatus,
+    }),
+    [arduinoPorts, arduinoStatus, lastCompileStatus, lastUploadStatus, selectedPort, serialMonitorStatus],
+  );
+  const performanceMetrics = useMemo(
+    () => getPerformanceMetrics(project, {
+      undoStackSize: historyPast.length,
+      redoStackSize: historyFuture.length,
+      autosaveStatus: window.desktop ? "active" : "unavailable",
+      lastAction: activityLog[0] ?? "No actions yet.",
+    }),
+    [activityLog, historyFuture.length, historyPast.length, project],
   );
 
   const componentConnections = useMemo(() => {
@@ -254,6 +305,7 @@ export default function App() {
           try {
             const restored = parseProjectJson(backup);
             restoreInitialProject(restored, null, false);
+            setLastSavedAt(null);
             setFeedback("Recovered autosave backup.");
             addActivity("Recovered autosave backup.");
             setDashboardOpen(false);
@@ -416,6 +468,7 @@ export default function App() {
       return;
     }
     setProject(createEmptyProject(), { filePath: null, libraryProjectId: null, dirty: false, resetHistory: true });
+    setLastSavedAt(null);
     setDashboardOpen(true);
     setFeedback("Started a new circuit.");
     addActivity("Started a new circuit.");
@@ -435,6 +488,7 @@ export default function App() {
         }
         const loaded = parseProjectJson(result.projectJson);
         replaceLoadedProject(loaded, result.filePath ?? null, false);
+        setLastSavedAt(loaded.metadata.updatedAt);
         setFeedback(`Opened ${result.filePath?.split(/[\\/]/).pop() ?? "project file"}.`);
         addActivity(`Opened ${result.filePath?.split(/[\\/]/).pop() ?? "project file"}.`);
         setDashboardOpen(false);
@@ -447,6 +501,7 @@ export default function App() {
         return;
       }
       replaceLoadedProject(parseProjectJson(json), null, false);
+      setLastSavedAt(null);
       setFeedback("Opened project file.");
       addActivity("Opened project file from browser fallback.");
       setDashboardOpen(false);
@@ -471,6 +526,7 @@ export default function App() {
     }
 
     replaceLoadedProject(parseProjectJson(result.projectJson), result.filePath ?? filePathToOpen, false);
+    setLastSavedAt(parseProjectJson(result.projectJson).metadata.updatedAt);
     setDashboardOpen(false);
     setFeedback(`Opened recent project ${result.filePath?.split(/[\\/]/).pop() ?? ""}.`);
     addActivity(`Opened recent project ${result.filePath?.split(/[\\/]/).pop() ?? ""}.`);
@@ -486,6 +542,7 @@ export default function App() {
     try {
       const result = await window.desktop.openLibraryProject(projectId);
       replaceLibraryProject(result.project, result.entry.id, result.entry.filePath, false);
+      setLastSavedAt(result.project.metadata.updatedAt);
       setDashboardOpen(false);
       setFeedback(`Opened library project ${result.entry.name}.`);
       addActivity(`Opened library project ${result.entry.name}.`);
@@ -509,6 +566,7 @@ export default function App() {
       projectId: libraryProjectId,
     });
     markProjectSaved(result.project, result.entry.filePath, result.entry.id);
+    setLastSavedAt(new Date().toISOString());
     setFeedback(`Saved ${result.entry.name} to the app library.`);
     addActivity(`Saved ${result.entry.name} to the app library.`);
     await refreshLibraryListing();
@@ -527,6 +585,7 @@ export default function App() {
       const result = await window.desktop.saveCircuit({ filePath, projectJson });
       if (!result.canceled) {
         markProjectSaved(project, result.filePath ?? filePath, null);
+        setLastSavedAt(new Date().toISOString());
         setFeedback("Saved project.");
         addActivity(`Saved project to ${result.filePath?.split(/[\\/]/).pop() ?? filePath?.split(/[\\/]/).pop() ?? ""}.`);
         await refreshRecentProjects();
@@ -550,6 +609,7 @@ export default function App() {
       const result = await window.desktop.saveCircuitAs({ defaultName: baseName, projectJson });
       if (!result.canceled) {
         markProjectSaved(project, result.filePath ?? null, null);
+        setLastSavedAt(new Date().toISOString());
         setFeedback("Saved project as .avc.");
         addActivity(`Saved project as ${result.filePath?.split(/[\\/]/).pop() ?? `${baseName}.avc`}.`);
         await refreshRecentProjects();
@@ -559,6 +619,7 @@ export default function App() {
 
     downloadJson(baseName, projectJson);
     markProjectSaved(project, null, null);
+    setLastSavedAt(new Date().toISOString());
     setFeedback("Downloaded project as .avc.");
     addActivity("Downloaded project as .avc.");
   }
@@ -590,6 +651,7 @@ export default function App() {
       }
       const imported = parseProjectJson(projectJson);
       replaceLoadedProject(imported, null, true);
+      setLastSavedAt(null);
       setFeedback("Imported project data.");
       addActivity("Imported project data.");
       setDashboardOpen(false);
@@ -610,6 +672,7 @@ export default function App() {
         return;
       }
       replaceLibraryProject(result.project, result.entry.id, result.entry.filePath, false);
+      setLastSavedAt(result.project.metadata.updatedAt);
       setDashboardOpen(false);
       setFeedback(`Imported ${result.entry.name} into the app library.`);
       addActivity(`Imported ${result.entry.name} into the app library.`);
@@ -625,6 +688,7 @@ export default function App() {
     try {
       const imported = parseProjectJson(importText);
       replaceLoadedProject(imported, null, true);
+      setLastSavedAt(null);
       setDashboardOpen(false);
       setImportModalOpen(false);
       setImportError(null);
@@ -641,6 +705,7 @@ export default function App() {
       return;
     }
     restoreInitialProject(template.project, null, false);
+    setLastSavedAt(null);
     setDashboardOpen(false);
     setFeedback(`Started template: ${template.name}.`);
     addActivity(`Started template: ${template.name}.`);
@@ -682,6 +747,7 @@ export default function App() {
     await window.desktop.deleteLibraryProject(entry.id);
     if (libraryProjectId === entry.id) {
       restoreInitialProject(createEmptyProject(), null, false, null);
+      setLastSavedAt(null);
       setDashboardOpen(true);
     }
     setFeedback(`Deleted ${entry.name} from the app library.`);
@@ -885,6 +951,7 @@ export default function App() {
       sketchCode: generatedSketch.code,
       fqbn: currentBoard.fqbn,
     });
+    setLastCompileStatus(result.success ? "success" : "error");
     setArduinoOutput(`${result.command}\n\n${result.output}`);
     setBottomTab("arduino");
     setBottomPanelOpen(true);
@@ -908,6 +975,7 @@ export default function App() {
       fqbn: currentBoard.fqbn,
       port: selectedPort,
     });
+    setLastUploadStatus(result.success ? "success" : "error");
     setArduinoOutput(`${result.command}\n\n${result.output}`);
     setBottomTab("arduino");
     setBottomPanelOpen(true);
@@ -925,6 +993,7 @@ export default function App() {
       port: selectedPort,
       baudRate: arduinoConfig.serialBaudRate,
     });
+    setSerialMonitorStatus("running");
     setBottomTab("arduino");
     setBottomPanelOpen(true);
     addActivity(`Started serial monitor on ${selectedPort}.`);
@@ -935,6 +1004,7 @@ export default function App() {
       return;
     }
     await window.desktop.stopSerialMonitor();
+    setSerialMonitorStatus("stopped");
     setSerialOutput((current) => `${current}\nSerial monitor stop requested.\n`);
     addActivity("Stopped serial monitor.");
   }
@@ -994,6 +1064,7 @@ export default function App() {
             }}
             title="Generate Arduino starter code (Ctrl/Cmd+G)"
           />
+          <ToolbarButton icon={<PanelBottom size={16} />} label="Monitor" onClick={() => { setBottomTab("monitor"); setBottomPanelOpen(true); }} title="Open System Monitor" />
           <ToolbarButton icon={<Boxes size={16} />} label="BOM" onClick={() => { setBottomTab("bom"); setBottomPanelOpen(true); }} title="View bill of materials" />
           <ToolbarButton icon={<FileCode2 size={16} />} label="Docs" onClick={() => { setBottomTab("docs"); setBottomPanelOpen(true); }} title="View project documentation exports" />
           <ToolbarButton icon={<Library size={16} />} label="Plugins" onClick={() => { setBottomTab("plugins"); setBottomPanelOpen(true); }} title="View runtime plugins" />
@@ -1516,14 +1587,11 @@ export default function App() {
                 <h2>Output</h2>
               </div>
               <div className="bottom-tabs">
-                <button type="button" className={bottomTab === "warnings" ? "tab-active" : ""} onClick={() => setBottomTab("warnings")}>Warnings</button>
-                <button type="button" className={bottomTab === "assistant" ? "tab-active" : ""} onClick={() => setBottomTab("assistant")}>Analyze Circuit</button>
-                <button type="button" className={bottomTab === "activity" ? "tab-active" : ""} onClick={() => setBottomTab("activity")}>Activity</button>
-                <button type="button" className={bottomTab === "code" ? "tab-active" : ""} onClick={() => setBottomTab("code")}>Generated Code</button>
-                <button type="button" className={bottomTab === "bom" ? "tab-active" : ""} onClick={() => setBottomTab("bom")}>BOM</button>
-                <button type="button" className={bottomTab === "docs" ? "tab-active" : ""} onClick={() => setBottomTab("docs")}>Docs</button>
-                <button type="button" className={bottomTab === "plugins" ? "tab-active" : ""} onClick={() => setBottomTab("plugins")}>Plugins</button>
-                <button type="button" className={bottomTab === "arduino" ? "tab-active" : ""} onClick={() => setBottomTab("arduino")}>Arduino CLI</button>
+                {bottomTabs.map((tab) => (
+                  <button key={tab.id} type="button" className={bottomTab === tab.id ? "tab-active" : ""} onClick={() => setBottomTab(tab.id as BottomTab)}>
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -1586,6 +1654,121 @@ export default function App() {
                   <span className="status-pill">Ultrasonic: {generatedSketch.analysis.ultrasonicBindings.length}</span>
                 </div>
                 <pre className="code-output compact-code"><code>{generatedSketch.code}</code></pre>
+              </div>
+            )}
+
+            {bottomTab === "monitor" && (
+              <div className="bottom-panel-body">
+                <div className="monitor-grid">
+                  <MonitorCard title="Project Status" subtitle={projectMetrics.projectName}>
+                    <MonitorStat label="Board" value={projectMetrics.selectedBoard} />
+                    <MonitorStat label="File Type" value={projectMetrics.fileType} />
+                    <MonitorStat label="State" value={projectMetrics.dirty ? "Unsaved" : "Saved"} tone={projectMetrics.dirty ? "warning" : "ok"} />
+                    <MonitorStat label="Last Saved" value={projectMetrics.lastSavedAt ? new Date(projectMetrics.lastSavedAt).toLocaleString() : "Not saved yet"} />
+                    <MonitorStat label="Components" value={String(projectMetrics.componentCount)} />
+                    <MonitorStat label="Connections" value={String(projectMetrics.connectionCount)} />
+                    <MonitorStat label="Warnings" value={String(projectMetrics.warningCount)} tone={projectMetrics.warningCount > 0 ? "warning" : "ok"} />
+                  </MonitorCard>
+
+                  <MonitorCard title="Circuit Health" subtitle="Live validation summary">
+                    <MonitorStat label="Danger" value={String(circuitHealth.dangerCount)} tone={circuitHealth.dangerCount > 0 ? "danger" : "ok"} />
+                    <MonitorStat label="Warnings" value={String(circuitHealth.warningCount)} tone={circuitHealth.warningCount > 0 ? "warning" : "ok"} />
+                    <MonitorStat label="Info" value={String(circuitHealth.infoCount)} />
+                    <MonitorStat label="Missing GND" value={String(circuitHealth.missingGroundCount)} tone={circuitHealth.missingGroundCount > 0 ? "warning" : "ok"} />
+                    <MonitorStat label="Floating Inputs" value={String(circuitHealth.floatingInputCount)} tone={circuitHealth.floatingInputCount > 0 ? "warning" : "ok"} />
+                    <MonitorStat label="Invalid Power" value={String(circuitHealth.invalidPowerConnectionCount)} tone={circuitHealth.invalidPowerConnectionCount > 0 ? "danger" : "ok"} />
+                  </MonitorCard>
+
+                  <MonitorCard title="Board Usage" subtitle={boardUsage.boardName}>
+                    <ProgressRow label="Digital Pins" meter={boardUsage.digital} />
+                    <ProgressRow label="Analog Pins" meter={boardUsage.analog} />
+                    <ProgressRow label="PWM Pins" meter={boardUsage.pwm} />
+                    <ProgressRow label="Serial Pins" meter={boardUsage.serial} />
+                    <ProgressRow label="I2C Pins" meter={boardUsage.i2c} />
+                    <ProgressRow label="SPI Pins" meter={boardUsage.spi} />
+                    <MonitorStat label="Power Pins Used" value={String(boardUsage.powerPinsUsed)} />
+                    <MonitorStat label="Ground Pins Used" value={String(boardUsage.groundPinsUsed)} />
+                    <div className="workspace-chip-list">
+                      {boardUsage.usedPinLabels.length === 0 ? (
+                        <div className="professional-empty">No active board pins detected yet.</div>
+                      ) : (
+                        boardUsage.usedPinLabels.map((label) => <span key={label} className="status-pill">{label}</span>)
+                      )}
+                    </div>
+                  </MonitorCard>
+
+                  <MonitorCard title="Component Usage" subtitle="Project composition">
+                    <MonitorStat label="Total" value={String(componentUsage.total)} />
+                    <MonitorStat label="Sensors" value={String(componentUsage.sensorsCount)} />
+                    <MonitorStat label="Actuators / Outputs" value={String(componentUsage.actuatorsCount)} />
+                    <MonitorStat label="Passive / Wiring" value={String(componentUsage.passiveCount)} />
+                    <MonitorStat label="Boards" value={String(componentUsage.boardsCount)} />
+                    <MonitorStat label="Most Connected" value={componentUsage.mostConnectedComponent ? `${componentUsage.mostConnectedComponent.name} (${componentUsage.mostConnectedComponent.count})` : "None"} />
+                    <div className="table-stack">
+                      {componentUsage.byType.map((item) => (
+                        <div key={item.type} className="monitor-table-row">
+                          <strong>{catalogByType[item.type]?.name ?? item.type}</strong>
+                          <span>{item.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </MonitorCard>
+
+                  <MonitorCard title="Simulation Runtime" subtitle="Logic simulator">
+                    <MonitorStat label="State" value={simulationMetrics.state} tone={simulationMetrics.state === "running" ? "ok" : simulationMetrics.state === "paused" ? "warning" : undefined} />
+                    <MonitorStat label="Simulated Time" value={`${simulationMetrics.simulatedTimeMs.toFixed(0)} ms`} />
+                    <MonitorStat label="Loop Count" value={String(simulationMetrics.loopCount)} />
+                    <MonitorStat label="Active Pins" value={String(simulationMetrics.activePins)} />
+                    <MonitorStat label="HIGH Pins" value={String(simulationMetrics.highPinsCount)} tone={simulationMetrics.highPinsCount > 0 ? "ok" : undefined} />
+                    <MonitorStat label="LOW Pins" value={String(simulationMetrics.lowPinsCount)} />
+                    <MonitorStat label="Analog Values" value={String(simulationMetrics.analogValuesCount)} />
+                    <MonitorStat label="Serial Lines" value={String(simulationMetrics.serialLinesCount)} />
+                  </MonitorCard>
+
+                  <MonitorCard title="Arduino CLI Status" subtitle="Desktop hardware workflow">
+                    <MonitorStat label="CLI" value={arduinoCliMetrics.cliDetected ? "Detected" : "Missing"} tone={arduinoCliMetrics.cliDetected ? "ok" : "danger"} />
+                    <MonitorStat label="CLI Path" value={arduinoCliMetrics.cliPath ?? "Not configured"} />
+                    <MonitorStat label="Selected Port" value={arduinoCliMetrics.selectedPort ?? "None"} />
+                    <MonitorStat label="Detected Boards" value={String(arduinoCliMetrics.detectedBoardsCount)} />
+                    <MonitorStat label="Last Compile" value={arduinoCliMetrics.lastCompileStatus} tone={arduinoCliMetrics.lastCompileStatus === "success" ? "ok" : arduinoCliMetrics.lastCompileStatus === "error" ? "danger" : undefined} />
+                    <MonitorStat label="Last Upload" value={arduinoCliMetrics.lastUploadStatus} tone={arduinoCliMetrics.lastUploadStatus === "success" ? "ok" : arduinoCliMetrics.lastUploadStatus === "error" ? "danger" : undefined} />
+                    <MonitorStat label="Serial Monitor" value={arduinoCliMetrics.serialMonitorStatus} tone={arduinoCliMetrics.serialMonitorStatus === "running" ? "ok" : undefined} />
+                  </MonitorCard>
+
+                  <MonitorCard title="Plugin Status" subtitle={`${pluginMetrics.loadedPluginsCount} loaded | ${pluginMetrics.failedPluginsCount} failed`}>
+                    <MonitorStat label="Loaded Plugins" value={String(pluginMetrics.loadedPluginsCount)} tone={pluginMetrics.loadedPluginsCount > 0 ? "ok" : undefined} />
+                    <MonitorStat label="Failed Plugins" value={String(pluginMetrics.failedPluginsCount)} tone={pluginMetrics.failedPluginsCount > 0 ? "danger" : "ok"} />
+                    <MonitorStat label="Feature Modules" value={String(featureModules.length)} />
+                    <div className="table-stack">
+                      {pluginMetrics.pluginSourceFolders.length === 0 ? (
+                        <div className="professional-empty">No plugin source folders detected.</div>
+                      ) : (
+                        pluginMetrics.pluginSourceFolders.map((folder) => (
+                          <div key={folder} className="monitor-table-row">
+                            <strong>Source</strong>
+                            <span>{folder}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {pluginMetrics.pluginWarnings.map((warning, index) => (
+                      <div key={`${warning}-${index}`} className="output-warning severity-warning">
+                        <strong>Plugin warning</strong>
+                        <span>{warning}</span>
+                      </div>
+                    ))}
+                  </MonitorCard>
+
+                  <MonitorCard title="Performance / Dev Status" subtitle="Safe app metrics">
+                    <MonitorStat label="Project Size" value={performanceMetrics.projectSizeLabel} />
+                    <MonitorStat label="Nodes / Edges" value={`${performanceMetrics.nodes} / ${performanceMetrics.edges}`} />
+                    <MonitorStat label="Autosave" value={performanceMetrics.autosaveStatus} tone={performanceMetrics.autosaveStatus === "active" ? "ok" : performanceMetrics.autosaveStatus === "unavailable" ? "warning" : undefined} />
+                    <MonitorStat label="Last Action" value={performanceMetrics.lastAction.replace(/^\d{1,2}:\d{2}:\d{2}\s?[APMapm]*:\s*/, "")} />
+                    <MonitorStat label="Undo Stack" value={String(performanceMetrics.undoStackSize)} />
+                    <MonitorStat label="Redo Stack" value={String(performanceMetrics.redoStackSize)} />
+                    <MonitorStat label="Renderer Bundle" value={performanceMetrics.rendererBundleStatus} tone={performanceMetrics.rendererBundleStatus === "healthy" ? "ok" : "warning"} />
+                  </MonitorCard>
+                </div>
               </div>
             )}
 
@@ -2010,6 +2193,66 @@ function ModalShell({
           <button type="button" onClick={onClose}>Close</button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+function MonitorCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="monitor-card">
+      <div className="workspace-card-header monitor-card-header">
+        <div>
+          <strong>{title}</strong>
+          {subtitle ? <small>{subtitle}</small> : null}
+        </div>
+      </div>
+      <div className="monitor-card-body">{children}</div>
+    </section>
+  );
+}
+
+function MonitorStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "ok" | "warning" | "danger";
+}) {
+  return (
+    <div className="monitor-stat">
+      <span>{label}</span>
+      <strong className={tone ? `tone-${tone}` : undefined}>{value}</strong>
+    </div>
+  );
+}
+
+function ProgressRow({
+  label,
+  meter,
+}: {
+  label: string;
+  meter: { used: number; total: number; percentage: number };
+}) {
+  const toneClass = meter.percentage >= 100 ? "danger" : meter.percentage >= 85 ? "warning" : "ok";
+  return (
+    <div className="progress-row">
+      <div className="progress-row-header">
+        <span>{label}</span>
+        <strong>{meter.used}/{meter.total || 0} ({meter.percentage}%)</strong>
+      </div>
+      <div className="progress-track">
+        <div className={`progress-fill ${toneClass}`} style={{ width: `${Math.min(100, meter.percentage)}%` }} />
       </div>
     </div>
   );
